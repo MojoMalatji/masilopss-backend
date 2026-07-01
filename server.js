@@ -1,31 +1,39 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 require("dotenv").config();
 
 const app = express();
 
 // ---------------- MIDDLEWARE ----------------
-// ---------------- MIDDLEWARE ----------------
+
+// CORS (production + local)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://masilopss-backend.onrender.com"
+];
+
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://masilopss-backend.onrender.com"
-  ],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// ✅ ADD THIS RIGHT HERE 👇
+// Preflight support
 app.options("*", cors());
 
-// JSON middleware
+// JSON parser (ONLY THIS — no bodyParser needed)
 app.use(express.json());
 
-app.use(bodyParser.json());
-
-// 🔥 DEBUG: show all requests
+// Debug logger
 app.use((req, res, next) => {
   console.log("Request:", req.method, req.url);
   next();
@@ -39,6 +47,7 @@ console.log("1. Server started");
 
 if (!getApps().length) {
   console.log("2. Initializing Firebase...");
+
   initializeApp({
     credential: cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
@@ -88,7 +97,7 @@ app.post("/createBooking", async (req, res) => {
 
     console.log("📩 Booking saved:", docRef.id);
 
-    return res.json({
+    res.json({
       success: true,
       message: "Booking saved successfully",
       id: docRef.id,
@@ -97,7 +106,7 @@ app.post("/createBooking", async (req, res) => {
   } catch (error) {
     console.error("❌ Booking error:", error);
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: error.message,
     });
