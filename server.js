@@ -95,7 +95,7 @@ app.post("/createBooking", async (req, res) => {
 });
 
 // ---------------- START SERVER ----------------
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log("6. Server running on port " + PORT);
