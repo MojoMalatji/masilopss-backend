@@ -14,7 +14,10 @@
   "dependencies": {
     "body-parser": "^2.3.0",
     "cors": "^2.8.6",
+<<<<<<< HEAD
     "dotenv": "^17.4.2",
+=======
+>>>>>>> 165e9535fd76ca347d7364a9130c8b5426f7544d
     "express": "^5.2.1",
     "firebase-admin": "^14.1.0",
     "nodemailer": "^9.0.3"
