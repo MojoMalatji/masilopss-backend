@@ -6,6 +6,7 @@ require("dotenv").config();
 const app = express();
 
 // ---------------- MIDDLEWARE ----------------
+// ---------------- MIDDLEWARE ----------------
 app.use(cors({
   origin: [
     "http://localhost:3000",
@@ -15,6 +16,12 @@ app.use(cors({
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+// ✅ ADD THIS RIGHT HERE 👇
+app.options("*", cors());
+
+// JSON middleware
+app.use(express.json());
 
 app.use(bodyParser.json());
 
