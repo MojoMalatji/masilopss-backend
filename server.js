@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
+require("dotenv").config();
 
 const app = express();
 
@@ -22,19 +23,13 @@ app.use((req, res, next) => {
 });
 
 // ---------------- FIREBASE ----------------
+const { initializeApp, cert, getApps } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+
 console.log("1. Server started");
- s
-
-const { initializeApp, cert, getApps } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
-
-console.log("2. Firebase key loaded");
-require("dotenv").config();
-
-const { initializeApp, cert, getApps } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
 
 if (!getApps().length) {
+  console.log("2. Initializing Firebase...");
   initializeApp({
     credential: cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
@@ -46,21 +41,12 @@ if (!getApps().length) {
 
 const db = getFirestore();
 
-if (!getApps().length) {
-  console.log("3. Initializing Firebase...");
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
-console.log("4. Firebase initialized");
-
-const db = getFirestore();
-console.log("5. Firestore ready");
+console.log("3. Firebase initialized");
+console.log("4. Firestore ready");
 
 // ---------------- ROUTES ----------------
 
-// Test route (optional)
+// Test route
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
@@ -113,5 +99,5 @@ app.post("/createBooking", async (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log("6. Server running on port " + PORT);
+  console.log("Server running on port " + PORT);
 });
