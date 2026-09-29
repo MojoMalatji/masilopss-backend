@@ -1,20 +1,65 @@
-require("dotenv").config();
+const db = require("../config/firebase");
 
-const { initializeApp, cert, getApps } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const saveBooking = async (booking) => {
+  const now = new Date();
 
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    }),
-  });
+  const bookingData = {
+    // Customer details
+    name: booking.name?.trim() || "",
+    email: booking.email?.trim().toLowerCase() || "",
+    phone: booking.phone?.trim() || "",
 
-  console.log("✅ Firebase initialized");
-}
+    // Appointment details
+    date: booking.date || "",
+    time: booking.time || "",
+    service: booking.service || "",
+    location: booking.location || "",
+    info: booking.info?.trim() || "",
 
-const db = getFirestore();
+    // Booking status
+    status: "pending",
 
-module.exports = db;
+    // Counselor assignment
+    counselorId: null,
+    counselorName: null,
+    counselorEmail: null,
+
+    // Google Calendar / Google Meet
+    calendarEventId: null,
+    googleMeetLink: null,
+
+    // Notification tracking
+    emailNotificationSent: false,
+    whatsappNotificationSent: false,
+
+    // Source
+    source: "website",
+
+    // Timestamps
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const docRef = await db
+    .collection("bookings")
+    .add(bookingData);
+
+  return docRef.id;
+};
+
+const getBookings = async () => {
+  const snapshot = await db
+    .collection("bookings")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+};
+
+module.exports = {
+  saveBooking,
+  getBookings,
+};
