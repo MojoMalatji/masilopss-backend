@@ -1,36 +1,31 @@
 // config/cors.js
 
 const allowedOrigins = [
-  // ========================================
   // LOCAL DEVELOPMENT
-  // ========================================
-
   "http://localhost:3000",
   "http://localhost:3001",
 
-  // ========================================
-  // FIREBASE HOSTING
-  // ========================================
+  // PRODUCTION WEBSITE
+  "https://www.mashilopss.co.za",
+  "https://mashilopss.co.za",
 
+  // FIREBASE HOSTING
   "https://mashilopss.web.app",
   "https://mashilopss.firebaseapp.com",
+
+  // ADMIN
   "https://mashilopss-admin.web.app",
 
-  // ========================================
-  // PRODUCTION FRONTEND
-  // ========================================
-
+  // OPTIONAL ENVIRONMENT URL
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-// ========================================
-// CORS OPTIONS
-// ========================================
+console.log("Allowed CORS origins:", allowedOrigins);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests without an Origin header.
-    // Useful for Postman and server-to-server requests.
+    // Requests without an Origin header
+    // such as server-to-server requests
     if (!origin) {
       return callback(null, true);
     }
@@ -40,7 +35,7 @@ const corsOptions = {
     }
 
     console.warn(
-      `❌ CORS blocked origin: ${origin}`
+      `CORS blocked origin: ${origin}`
     );
 
     return callback(
