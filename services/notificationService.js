@@ -9,8 +9,14 @@ const counselorAppointmentTemplate = require("../templates/counselorAppointment"
 const clientRejectionTemplate = require("../templates/clientRejection");
 const counselorRejectionTemplate = require("../templates/counselorRejection");
 
+// Admin-created appointment templates
+const adminAppointmentClient = require("../templates/adminAppointmentClient");
+const adminAppointmentCounselor = require("../templates/adminAppointmentCounselor");
+
 /**
- * Initial website booking notifications
+ * ========================================
+ * INITIAL WEBSITE BOOKING NOTIFICATIONS
+ * ========================================
  */
 const sendBookingNotifications = async (booking) => {
   const results = {
@@ -18,6 +24,9 @@ const sendBookingNotifications = async (booking) => {
     ownerEmail: false,
   };
 
+  /*
+   * Client booking confirmation
+   */
   try {
     await sendEmail({
       to: booking.email,
@@ -42,6 +51,9 @@ const sendBookingNotifications = async (booking) => {
     );
   }
 
+  /*
+   * Owner notification
+   */
   try {
     await sendEmail({
       to: process.env.OWNER_EMAIL,
@@ -69,7 +81,12 @@ const sendBookingNotifications = async (booking) => {
 };
 
 /**
- * Approval emails
+ * ========================================
+ * PUBLIC BOOKING APPROVAL NOTIFICATIONS
+ * ========================================
+ *
+ * Used when a client submits a booking
+ * through the website and an admin approves it.
  */
 const sendApprovalNotifications = async (booking) => {
   const results = {
@@ -78,7 +95,7 @@ const sendApprovalNotifications = async (booking) => {
   };
 
   /*
-   * Client
+   * Client approval email
    */
   try {
     if (!booking.email) {
@@ -111,7 +128,7 @@ const sendApprovalNotifications = async (booking) => {
   }
 
   /*
-   * Counselor
+   * Counselor approval/assignment email
    */
   try {
     if (!booking.counselorEmail) {
@@ -149,16 +166,125 @@ const sendApprovalNotifications = async (booking) => {
 };
 
 /**
- * Rejection emails
+ * ========================================
+ * ADMIN APPOINTMENT NOTIFICATIONS
+ * ========================================
+ *
+ * Used ONLY when an administrator creates
+ * an appointment directly.
+ *
+ * Admin-created appointments are already
+ * approved, therefore they must NOT use
+ * the normal "Appointment Approved" emails.
+ *
+ * These emails use:
+ *
+ * Client:
+ * "Appointment Scheduled"
+ *
+ * Counselor:
+ * "Appointment Scheduled"
  */
-const sendRejectionNotifications = async (booking) => {
+const sendAdminAppointmentNotifications = async (
+  booking
+) => {
+  const results = {
+    clientEmail: false,
+    counselorEmail: false,
+  };
+
+  /*
+   * ========================================
+   * CLIENT APPOINTMENT SCHEDULED EMAIL
+   * ========================================
+   */
+  try {
+    if (!booking.email) {
+      throw new Error(
+        "Client email is missing."
+      );
+    }
+
+    await sendEmail({
+      to: booking.email,
+
+      subject:
+        "Appointment Scheduled - Mashilo Psyché & Social Solutions",
+
+      html: adminAppointmentClient(booking),
+
+      replyTo: process.env.OWNER_EMAIL,
+    });
+
+    results.clientEmail = true;
+
+    console.log(
+      `✅ Admin appointment email sent to client: ${booking.email}`
+    );
+  } catch (error) {
+    console.error(
+      "❌ Admin appointment client email failed:",
+      error.message
+    );
+  }
+
+  /*
+   * ========================================
+   * COUNSELOR APPOINTMENT SCHEDULED EMAIL
+   * ========================================
+   */
+  try {
+    if (!booking.counselorEmail) {
+      throw new Error(
+        "Counselor email is missing."
+      );
+    }
+
+    await sendEmail({
+      to: booking.counselorEmail,
+
+      subject:
+        `Appointment Scheduled - ${booking.date} at ${booking.time}`,
+
+      html: adminAppointmentCounselor(
+        booking
+      ),
+
+      replyTo: process.env.OWNER_EMAIL,
+    });
+
+    results.counselorEmail = true;
+
+    console.log(
+      `✅ Admin appointment email sent to counselor: ${booking.counselorEmail}`
+    );
+  } catch (error) {
+    console.error(
+      "❌ Admin appointment counselor email failed:",
+      error.message
+    );
+  }
+
+  return results;
+};
+
+/**
+ * ========================================
+ * REJECTION NOTIFICATIONS
+ * ========================================
+ */
+const sendRejectionNotifications = async (
+  booking
+) => {
   const results = {
     clientRejectionEmail: false,
     counselorRejectionEmail: false,
   };
 
   /*
-   * Client rejection email
+   * ========================================
+   * CLIENT REJECTION EMAIL
+   * ========================================
    */
   try {
     if (!booking.email) {
@@ -191,10 +317,12 @@ const sendRejectionNotifications = async (booking) => {
   }
 
   /*
-   * Counselor rejection email
+   * ========================================
+   * COUNSELOR REJECTION EMAIL
+   * ========================================
    *
-   * This is only sent if a counselor
-   * was assigned to the booking.
+   * Only sent when a counselor has been
+   * assigned to the booking.
    */
   try {
     if (!booking.counselorEmail) {
@@ -218,8 +346,7 @@ const sendRejectionNotifications = async (booking) => {
       replyTo: process.env.OWNER_EMAIL,
     });
 
-    results.counselorRejectionEmail =
-      true;
+    results.counselorRejectionEmail = true;
 
     console.log(
       `✅ Rejection email sent to counselor: ${booking.counselorEmail}`
@@ -234,8 +361,14 @@ const sendRejectionNotifications = async (booking) => {
   return results;
 };
 
+/**
+ * ========================================
+ * EXPORTS
+ * ========================================
+ */
 module.exports = {
   sendBookingNotifications,
   sendApprovalNotifications,
+  sendAdminAppointmentNotifications,
   sendRejectionNotifications,
 };
