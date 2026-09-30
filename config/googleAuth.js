@@ -1,89 +1,140 @@
-const fs = require("fs");
-const path = require("path");
+// config/googleAuth.js
+
 const { google } = require("googleapis");
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar",
 ];
 
-const CREDENTIALS_PATH = path.join(
-  __dirname,
-  "..",
-  "credentials.json"
-);
-
-const TOKEN_PATH = path.join(
-  __dirname,
-  "..",
-  "token.json"
-);
-
 const getAuthorizedClient = async () => {
-  if (!fs.existsSync(CREDENTIALS_PATH)) {
-    console.error("❌ GOOGLE CREDENTIALS DEBUG");
-    console.error("Current working directory:", process.cwd());
-    console.error("Credentials path:", CREDENTIALS_PATH);
-    console.error(
-      "Credentials exists:",
-      fs.existsSync(CREDENTIALS_PATH)
-    );
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
+  if (!clientId) {
     throw new Error(
-      `Google credentials.json was not found at: ${CREDENTIALS_PATH}`
+      "GOOGLE_CLIENT_ID is not configured."
     );
   }
 
-  const credentials = JSON.parse(
-    fs.readFileSync(CREDENTIALS_PATH, "utf8")
-  );
-
-  const { client_secret, client_id, redirect_uris } =
-    credentials.installed || credentials.web || {};
-
-  if (!client_id || !client_secret) {
+  if (!clientSecret) {
     throw new Error(
-      "Invalid Google OAuth credentials.json."
+      "GOOGLE_CLIENT_SECRET is not configured."
+    );
+  }
+
+  if (!redirectUri) {
+    throw new Error(
+      "GOOGLE_REDIRECT_URI is not configured."
+    );
+  }
+
+  if (!refreshToken) {
+    throw new Error(
+      "GOOGLE_REFRESH_TOKEN is not configured."
     );
   }
 
   const oauth2Client = new google.auth.OAuth2(
-    client_id,
-    client_secret,
-    redirect_uris?.[0] ||
-      "http://localhost:5000/oauth2callback"
+    clientId,
+    clientSecret,
+    redirectUri
   );
 
-  // Use previously saved token
-  if (fs.existsSync(TOKEN_PATH)) {
-    const token = JSON.parse(
-      fs.readFileSync(TOKEN_PATH, "utf8")
+  oauth2Client.setCredentials({
+    refresh_token: refreshToken,
+  });
+
+  return oauth2Client;
+};
+
+const getGoogleAuthorizationUrl = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId) {
+    throw new Error(
+      "GOOGLE_CLIENT_ID is not configured."
     );
-
-    oauth2Client.setCredentials(token);
-
-    return oauth2Client;
   }
 
-  // No token yet — generate authorization URL
-  const authUrl = oauth2Client.generateAuthUrl({
+  if (!clientSecret) {
+    throw new Error(
+      "GOOGLE_CLIENT_SECRET is not configured."
+    );
+  }
+
+  if (!redirectUri) {
+    throw new Error(
+      "GOOGLE_REDIRECT_URI is not configured."
+    );
+  }
+
+  const oauth2Client = new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    redirectUri
+  );
+
+  return oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
   });
-
-  console.log("\n========================================");
-  console.log(" GOOGLE CALENDAR AUTHORIZATION REQUIRED ");
-  console.log("========================================\n");
-  console.log(authUrl);
-  console.log("\n========================================\n");
-
-  throw new Error(
-    "Google Calendar authorization required. Open the URL printed above."
-  );
 };
+
+const exchangeAuthorizationCode =
+  async (code) => {
+    if (!code) {
+      throw new Error(
+        "Google authorization code is required."
+      );
+    }
+
+    const clientId =
+      process.env.GOOGLE_CLIENT_ID;
+
+    const clientSecret =
+      process.env.GOOGLE_CLIENT_SECRET;
+
+    const redirectUri =
+      process.env.GOOGLE_REDIRECT_URI;
+
+    if (!clientId) {
+      throw new Error(
+        "GOOGLE_CLIENT_ID is not configured."
+      );
+    }
+
+    if (!clientSecret) {
+      throw new Error(
+        "GOOGLE_CLIENT_SECRET is not configured."
+      );
+    }
+
+    if (!redirectUri) {
+      throw new Error(
+        "GOOGLE_REDIRECT_URI is not configured."
+      );
+    }
+
+    const oauth2Client =
+      new google.auth.OAuth2(
+        clientId,
+        clientSecret,
+        redirectUri
+      );
+
+    const { tokens } =
+      await oauth2Client.getToken(code);
+
+    return tokens;
+  };
 
 module.exports = {
   getAuthorizedClient,
-  TOKEN_PATH,
-  CREDENTIALS_PATH,
+  getGoogleAuthorizationUrl,
+  exchangeAuthorizationCode,
 };
