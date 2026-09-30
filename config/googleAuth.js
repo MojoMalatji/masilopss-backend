@@ -20,8 +20,16 @@ const TOKEN_PATH = path.join(
 
 const getAuthorizedClient = async () => {
   if (!fs.existsSync(CREDENTIALS_PATH)) {
+    console.error("❌ GOOGLE CREDENTIALS DEBUG");
+    console.error("Current working directory:", process.cwd());
+    console.error("Credentials path:", CREDENTIALS_PATH);
+    console.error(
+      "Credentials exists:",
+      fs.existsSync(CREDENTIALS_PATH)
+    );
+
     throw new Error(
-      "Google credentials.json was not found."
+      `Google credentials.json was not found at: ${CREDENTIALS_PATH}`
     );
   }
 
