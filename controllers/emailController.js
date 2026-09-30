@@ -1,50 +1,116 @@
-const transporter = require("../config/mailer");
+// controllers/emailController.js
 
+const { sendEmail } = require("../services/emailService");
 
-const sendEmail = async (req, res) => {
-
+const sendEmailController = async (req, res) => {
   try {
-
     const {
       subject,
-      message
+      message,
+      to,
     } = req.body;
 
+    // ========================================
+    // VALIDATION
+    // ========================================
 
-    await transporter.sendMail({
+    if (!subject) {
+      return res.status(400).json({
+        success: false,
+        error: "Email subject is required.",
+      });
+    }
 
-      from: process.env.EMAIL_USER,
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: "Email message is required.",
+      });
+    }
 
-      to: "Info@mashilopss.co.za",
+    // ========================================
+    // RECIPIENT
+    // ========================================
 
-      subject: subject,
+    const recipient =
+      to ||
+      process.env.OWNER_EMAIL;
 
-      text: message,
+    if (!recipient) {
+      return res.status(500).json({
+        success: false,
+        error:
+          "No email recipient has been configured.",
+      });
+    }
 
+    // ========================================
+    // SEND EMAIL THROUGH RESEND
+    // ========================================
+
+    await sendEmail({
+      to: recipient,
+
+      subject,
+
+      html: `
+        <div
+          style="
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+          "
+        >
+          <h2
+            style="
+              color: #35005f;
+              margin-bottom: 20px;
+            "
+          >
+            Mashilo Psyché & Social Solutions
+          </h2>
+
+          <div
+            style="
+              white-space: pre-wrap;
+            "
+          >
+            ${message}
+          </div>
+        </div>
+      `,
+
+      replyTo:
+        process.env.OWNER_EMAIL,
     });
 
+    // ========================================
+    // SUCCESS
+    // ========================================
 
-    res.status(200).json({
+    console.log(
+      `✅ Email sent successfully to ${recipient}`
+    );
+
+    return res.status(200).json({
       success: true,
-      message: "Email sent successfully"
+      message: "Email sent successfully.",
     });
+  } catch (error) {
+    console.error(
+      "❌ Email Controller Error:",
+      error
+    );
 
-
-  } catch(error) {
-
-    console.error("Email Error:", error);
-
-
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: error.message
+      error:
+        error?.message ||
+        "Failed to send email.",
     });
-
   }
-
 };
 
-
 module.exports = {
-  sendEmail
+  sendEmail: sendEmailController,
 };
