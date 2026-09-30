@@ -1,4 +1,7 @@
-node_modules
+node_modules/
 .env
 firebaseKey.json
-logs
+logs/
+*.log
+credentials.json
+token.json
