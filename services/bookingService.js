@@ -16,9 +16,7 @@ const TIME_ZONE = "Africa/Johannesburg";
 
 const validateDate = (date) => {
   if (!date) {
-    throw new Error(
-      "Appointment date is required."
-    );
+    throw new Error("Appointment date is required.");
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -30,9 +28,7 @@ const validateDate = (date) => {
 
 const validateTime = (time) => {
   if (!time) {
-    throw new Error(
-      "Appointment time is required."
-    );
+    throw new Error("Appointment time is required.");
   }
 
   if (!/^\d{2}:\d{2}$/.test(time)) {
@@ -41,8 +37,9 @@ const validateTime = (time) => {
     );
   }
 
-  const [hours, minutes] =
-    time.split(":").map(Number);
+  const [hours, minutes] = time
+    .split(":")
+    .map(Number);
 
   if (
     hours < 0 ||
@@ -50,9 +47,7 @@ const validateTime = (time) => {
     minutes < 0 ||
     minutes > 59
   ) {
-    throw new Error(
-      "Invalid appointment time."
-    );
+    throw new Error("Invalid appointment time.");
   }
 };
 
@@ -60,25 +55,24 @@ const toDateTime = (date, time) => {
   validateDate(date);
   validateTime(time);
 
-  return new Date(
-    `${date}T${time}:00+02:00`
-  );
+  return new Date(`${date}T${time}:00+02:00`);
 };
 
 const getAppointmentEndTime = (
   date,
   time
 ) => {
-  const startDateTime =
-    toDateTime(date, time);
+  const startDateTime = toDateTime(
+    date,
+    time
+  );
 
-  const endDateTime =
-    new Date(
-      startDateTime.getTime() +
-        APPOINTMENT_DURATION_MINUTES *
-          60 *
-          1000
-    );
+  const endDateTime = new Date(
+    startDateTime.getTime() +
+      APPOINTMENT_DURATION_MINUTES *
+        60 *
+        1000
+  );
 
   const year =
     endDateTime.getFullYear();
@@ -161,9 +155,22 @@ const checkCounselorAvailability =
         }
       );
 
-    if (
-      !availability?.available
-    ) {
+    /*
+     * Support both possible return formats:
+     *
+     * { available: true }
+     *
+     * or
+     *
+     * true
+     */
+
+    const isAvailable =
+      typeof availability === "boolean"
+        ? availability
+        : availability?.available;
+
+    if (!isAvailable) {
       const error = new Error(
         availability?.reason ||
           "Counselor is unavailable during this time."
@@ -200,13 +207,12 @@ const checkAppointmentConflict =
     const newStart =
       toDateTime(date, time);
 
-    const newEnd =
-      new Date(
-        newStart.getTime() +
-          APPOINTMENT_DURATION_MINUTES *
-            60 *
-            1000
-      );
+    const newEnd = new Date(
+      newStart.getTime() +
+        APPOINTMENT_DURATION_MINUTES *
+          60 *
+          1000
+    );
 
     for (const booking of bookings) {
       if (
@@ -274,7 +280,7 @@ const checkAppointmentConflict =
   };
 
 // ----------------------------------------
-// CREATE WEBSITE BOOKING
+// CREATE WEBSITE / ADMIN BOOKING
 // ----------------------------------------
 
 const createBooking = async (
@@ -295,6 +301,15 @@ const createBooking = async (
     service,
     location,
     info,
+
+    // Admin-specific fields
+    source,
+    counselorId,
+    counselorName,
+    counselorEmail,
+    counselorPhone,
+    createdBy,
+    updatedBy,
   } = bookingData;
 
   // --------------------------------------
@@ -353,12 +368,315 @@ const createBooking = async (
   );
 
   // --------------------------------------
-  // Website bookings remain pending.
-  //
-  // We DO NOT assign a counselor.
-  // We DO NOT create Calendar events.
-  // We DO NOT create Google Meet.
+  // Determine booking source
   // --------------------------------------
+
+  const isAdminBooking =
+    source === "admin";
+
+  // ==================================================
+  // ADMIN BOOKING
+  // ==================================================
+
+  if (isAdminBooking) {
+    console.log(
+      "📅 Creating admin appointment..."
+    );
+
+    // --------------------------------------
+    // Validate counselor
+    // --------------------------------------
+
+    if (!counselorId) {
+      throw new Error(
+        "Counselor is required for an admin appointment."
+      );
+    }
+
+    if (!counselorName) {
+      throw new Error(
+        "Counselor name is required."
+      );
+    }
+
+    if (!counselorEmail) {
+      throw new Error(
+        "Counselor email is required."
+      );
+    }
+
+    // --------------------------------------
+    // Check counselor availability
+    // --------------------------------------
+
+    await checkCounselorAvailability(
+      {
+        counselorId,
+        date,
+        time,
+      }
+    );
+
+    // --------------------------------------
+    // Check appointment conflicts
+    // --------------------------------------
+
+    await checkAppointmentConflict(
+      {
+        counselorId,
+        date,
+        time,
+      }
+    );
+
+    // --------------------------------------
+    // IMPORTANT
+    //
+    // Save the booking first so Firestore
+    // has a booking ID.
+    //
+    // We temporarily save it as pending
+    // while the Google Calendar event is
+    // being created.
+    //
+    // It is then immediately changed to
+    // approved after Calendar succeeds.
+    // --------------------------------------
+
+    const adminBooking = {
+      name:
+        name.trim(),
+
+      email:
+        email.trim().toLowerCase(),
+
+      phone:
+        phone.trim(),
+
+      date,
+
+      time,
+
+      service,
+
+      location,
+
+      info:
+        info?.trim() || "",
+
+      status:
+        "pending",
+
+      source:
+        "admin",
+
+      counselorId,
+
+      counselorName,
+
+      counselorEmail,
+
+      counselorPhone:
+        counselorPhone || null,
+
+      calendarEventId:
+        null,
+
+      googleMeetLink:
+        null,
+
+      createdBy:
+        createdBy || "Admin",
+
+      updatedBy:
+        updatedBy ||
+        createdBy ||
+        "Admin",
+    };
+
+    // --------------------------------------
+    // Save booking
+    // --------------------------------------
+
+    const bookingId =
+      await firestoreService.saveBooking(
+        adminBooking
+      );
+
+    let savedBooking =
+      await firestoreService.getBookingById(
+        bookingId
+      );
+
+    console.log(
+      `📝 Admin booking created temporarily as pending: ${bookingId}`
+    );
+
+    // --------------------------------------
+    // Create Google Calendar event
+    // --------------------------------------
+
+    let calendarResult;
+
+    try {
+      calendarResult =
+        await googleCalendarService.createCalendarEvent(
+          savedBooking
+        );
+
+      console.log(
+        `📅 Google Calendar event created for booking: ${bookingId}`
+      );
+    } catch (calendarError) {
+      console.error(
+        "❌ Failed to create Google Calendar event for admin appointment:",
+        calendarError
+      );
+
+      /*
+       * Do not leave the appointment looking
+       * approved if Calendar creation failed.
+       *
+       * The booking remains pending so the
+       * admin can see that it needs attention.
+       */
+
+      throw new Error(
+        calendarError?.message ||
+          "Failed to create the Google Calendar appointment. The appointment was not approved."
+      );
+    }
+
+    // --------------------------------------
+    // Approve Firestore booking
+    // --------------------------------------
+
+    try {
+      await firestoreService.approveBooking(
+        {
+          bookingId,
+
+          counselorId,
+
+          counselorName,
+
+          counselorEmail,
+        }
+      );
+
+      // ------------------------------------
+      // Save Calendar details
+      // ------------------------------------
+
+      if (calendarResult) {
+        await firestoreService.updateCalendarDetails(
+          bookingId,
+          calendarResult
+        );
+      }
+
+      savedBooking =
+        await firestoreService.getBookingById(
+          bookingId
+        );
+    } catch (firestoreError) {
+      console.error(
+        "❌ Failed to approve admin booking. Rolling back Calendar event.",
+        firestoreError
+      );
+
+      // ------------------------------------
+      // Roll Calendar back
+      // ------------------------------------
+
+      if (
+        calendarResult?.calendarEventId
+      ) {
+        try {
+          await googleCalendarService.deleteCalendarEvent(
+            calendarResult.calendarEventId
+          );
+
+          console.log(
+            `↩️ Calendar event rolled back for booking: ${bookingId}`
+          );
+        } catch (rollbackError) {
+          console.error(
+            "❌ Calendar rollback failed:",
+            rollbackError
+          );
+        }
+      }
+
+      throw firestoreError;
+    }
+
+    // --------------------------------------
+    // Send approval notifications
+    // --------------------------------------
+
+    let notifications = {};
+
+    try {
+      notifications =
+        await notificationService.sendApprovalNotifications(
+          savedBooking
+        );
+
+      await firestoreService.updateNotificationStatus(
+        bookingId,
+        notifications
+      );
+    } catch (notificationError) {
+      /*
+       * The appointment is already approved and
+       * the Calendar event exists.
+       *
+       * Do NOT roll the appointment back just
+       * because an email failed.
+       */
+
+      console.error(
+        "⚠️ Admin appointment was approved, but notification sending failed:",
+        notificationError
+      );
+    }
+
+    // --------------------------------------
+    // Get final booking
+    // --------------------------------------
+
+    const finalBooking =
+      await firestoreService.getBookingById(
+        bookingId
+      );
+
+    console.log(
+      `✅ Admin appointment created and approved successfully: ${bookingId}`
+    );
+
+    return {
+      booking:
+        finalBooking,
+
+      calendar:
+        calendarResult,
+
+      notifications,
+    };
+  }
+
+  // ==================================================
+  // WEBSITE BOOKING
+  // ==================================================
+
+  /*
+   * Website bookings remain pending.
+   *
+   * No counselor is assigned.
+   * No Google Calendar event is created.
+   * No Google Meet is created.
+   */
 
   const booking = {
     name:
@@ -396,6 +714,9 @@ const createBooking = async (
     counselorEmail:
       null,
 
+    counselorPhone:
+      null,
+
     calendarEventId:
       null,
 
@@ -421,25 +742,47 @@ const createBooking = async (
   // Send initial notifications
   // --------------------------------------
 
-  const notifications =
-    await notificationService.sendBookingNotifications(
-      savedBooking
+  let notifications = {};
+
+  try {
+    notifications =
+      await notificationService.sendBookingNotifications(
+        savedBooking
+      );
+  } catch (notificationError) {
+    /*
+     * Booking creation should not be lost
+     * simply because notification delivery
+     * failed.
+     */
+
+    console.error(
+      "⚠️ Website booking created, but initial notification sending failed:",
+      notificationError
     );
+  }
 
   // --------------------------------------
   // Save notification status
   // --------------------------------------
 
-  await firestoreService.updateNotificationStatus(
-    bookingId,
-    {
-      clientApprovalEmail:
-        false,
+  try {
+    await firestoreService.updateNotificationStatus(
+      bookingId,
+      {
+        clientApprovalEmail:
+          false,
 
-      counselorEmail:
-        false,
-    }
-  );
+        counselorEmail:
+          false,
+      }
+    );
+  } catch (notificationStatusError) {
+    console.error(
+      "⚠️ Failed to save website notification status:",
+      notificationStatusError
+    );
+  }
 
   console.log(
     `✅ Website booking created: ${bookingId}`
@@ -575,10 +918,6 @@ const approveBooking = async ({
 
   // --------------------------------------
   // Create Google Calendar event
-  //
-  // IMPORTANT:
-  // Calendar is created BEFORE marking
-  // the Firestore booking approved.
   // --------------------------------------
 
   let calendarResult;
@@ -634,15 +973,14 @@ const approveBooking = async ({
         bookingId
       );
   } catch (firestoreError) {
-    // ------------------------------------
-    // Roll Calendar back if Firestore
-    // approval fails.
-    // ------------------------------------
-
     console.error(
       "❌ Failed to save approved booking. Rolling back Calendar event.",
       firestoreError
     );
+
+    // ------------------------------------
+    // Roll Calendar back
+    // ------------------------------------
 
     if (
       calendarResult?.calendarEventId
@@ -679,6 +1017,10 @@ const approveBooking = async ({
     bookingId,
     notifications
   );
+
+  // --------------------------------------
+  // Get final booking
+  // --------------------------------------
 
   const finalBooking =
     await firestoreService.getBookingById(
@@ -769,6 +1111,10 @@ const rejectBooking = async ({
     bookingId,
     notifications
   );
+
+  // --------------------------------------
+  // Get final booking
+  // --------------------------------------
 
   const finalBooking =
     await firestoreService.getBookingById(

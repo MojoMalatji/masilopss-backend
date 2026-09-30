@@ -5,14 +5,6 @@ require("dotenv").config();
 const { Resend } = require("resend");
 
 // ========================================
-// RESEND
-// ========================================
-
-const resend = new Resend(
-  process.env.RESEND_API_KEY
-);
-
-// ========================================
 // SEND EMAIL
 // ========================================
 
@@ -22,6 +14,10 @@ const sendEmail = async ({
   html,
   replyTo,
 }) => {
+  // ======================================
+  // Validate environment
+  // ======================================
+
   if (!process.env.RESEND_API_KEY) {
     throw new Error(
       "RESEND_API_KEY is not configured."
@@ -33,6 +29,10 @@ const sendEmail = async ({
       "EMAIL_FROM is not configured."
     );
   }
+
+  // ======================================
+  // Validate email data
+  // ======================================
 
   if (!to) {
     throw new Error(
@@ -52,6 +52,18 @@ const sendEmail = async ({
     );
   }
 
+  // ======================================
+  // Initialize Resend
+  // ======================================
+
+  const resend = new Resend(
+    process.env.RESEND_API_KEY
+  );
+
+  // ======================================
+  // Prepare email
+  // ======================================
+
   const emailData = {
     from: process.env.EMAIL_FROM,
     to: [to],
@@ -64,26 +76,46 @@ const sendEmail = async ({
     emailData.replyTo = replyTo;
   }
 
-  const { data, error } =
-    await resend.emails.send(emailData);
+  // ======================================
+  // Send email
+  // ======================================
 
-  if (error) {
+  try {
+    const { data, error } =
+      await resend.emails.send(
+        emailData
+      );
+
+    if (error) {
+      console.error(
+        "❌ Resend email error:",
+        error
+      );
+
+      throw new Error(
+        error.message ||
+          "Failed to send email."
+      );
+    }
+
+    console.log(
+      `✅ Email sent successfully. Resend ID: ${
+        data?.id || "unknown"
+      }`
+    );
+
+    return data;
+  } catch (error) {
     console.error(
-      "❌ Resend email error:",
+      "❌ Email sending failed:",
       error
     );
 
     throw new Error(
-      error.message ||
+      error?.message ||
         "Failed to send email."
     );
   }
-
-  console.log(
-    `✅ Email sent successfully. Resend ID: ${data?.id || "unknown"}`
-  );
-
-  return data;
 };
 
 // ========================================

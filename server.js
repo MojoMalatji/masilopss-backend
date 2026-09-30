@@ -11,6 +11,7 @@ const bookingRoutes = require("./routes/bookingRoutes");
 const blockerRoutes = require("./routes/blockerRoutes");
 const emailRoutes = require("./routes/emailRoutes");
 const googleAuthRoutes = require("./routes/googleAuthRoutes");
+const adminAppointmentRoutes = require("./routes/adminAppointmentRoutes");
 
 const app = express();
 
@@ -50,12 +51,19 @@ app.get("/", (req, res) => {
 // ROUTES
 // ========================================
 
+// Public website bookings
 app.use("/", bookingRoutes);
 
+// Counselor blockers
 app.use("/", blockerRoutes);
 
+// Admin appointment creation
+app.use("/", adminAppointmentRoutes);
+
+// Email routes
 app.use("/api/email", emailRoutes);
 
+// Google authentication
 app.use("/", googleAuthRoutes);
 
 // ========================================

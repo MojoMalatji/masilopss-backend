@@ -6,6 +6,7 @@ const googleCalendarService = require("./googleCalendarService");
 const notificationService = require("./notificationService");
 
 const APPOINTMENT_DURATION_MINUTES = 60;
+const TIME_ZONE = "Africa/Johannesburg";
 
 /**
  * ========================================
@@ -17,11 +18,13 @@ const validateDate = (date) => {
     throw new Error("Appointment date is required.");
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error(
-      "Invalid appointment date. Expected YYYY-MM-DD."
-    );
+  const parsedDate = new Date(`${date}T00:00:00`);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error("Invalid appointment date.");
   }
+
+  return parsedDate;
 };
 
 /**
@@ -34,24 +37,15 @@ const validateTime = (time) => {
     throw new Error("Appointment time is required.");
   }
 
-  if (!/^\d{2}:\d{2}$/.test(time)) {
+  const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+  if (!timePattern.test(time)) {
     throw new Error(
-      "Invalid appointment time. Expected HH:MM."
+      "Invalid appointment time. Use HH:mm format."
     );
   }
 
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
-
-  if (
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    throw new Error("Invalid appointment time.");
-  }
+  return time;
 };
 
 /**
@@ -59,32 +53,31 @@ const validateTime = (time) => {
  * GET APPOINTMENT END TIME
  * ========================================
  */
-const getAppointmentEndTime = (time) => {
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
+const getAppointmentEndTime = (startTime) => {
+  const [hours, minutes] =
+    startTime.split(":").map(Number);
 
-  let totalMinutes =
-    hours * 60 +
-    minutes +
-    APPOINTMENT_DURATION_MINUTES;
+  const startDate = new Date();
 
-  totalMinutes %= 1440;
-
-  const endHours = Math.floor(
-    totalMinutes / 60
+  startDate.setHours(
+    hours,
+    minutes,
+    0,
+    0
   );
 
-  const endMinutes =
-    totalMinutes % 60;
+  const endDate = new Date(
+    startDate.getTime() +
+      APPOINTMENT_DURATION_MINUTES *
+        60 *
+        1000
+  );
 
-  return `${String(endHours).padStart(
-    2,
-    "0"
-  )}:${String(endMinutes).padStart(
-    2,
-    "0"
-  )}`;
+  return `${String(
+    endDate.getHours()
+  ).padStart(2, "0")}:${String(
+    endDate.getMinutes()
+  ).padStart(2, "0")}`;
 };
 
 /**
@@ -117,6 +110,8 @@ const validateFutureAppointment = (
       "The appointment must be scheduled for a future date and time."
     );
   }
+
+  return appointmentDateTime;
 };
 
 /**
@@ -139,19 +134,18 @@ const checkCounselorAvailability =
         endTime,
       });
 
-    /*
-     * blockerService returns a boolean.
-     */
     if (!available) {
       throw new Error(
         "The selected counselor is unavailable during this time because of a blocked period."
       );
     }
+
+    return true;
   };
 
 /**
  * ========================================
- * CHECK APPOINTMENT CONFLICT
+ * CHECK EXISTING COUNSELOR APPOINTMENTS
  * ========================================
  */
 const checkAppointmentConflict =
@@ -164,11 +158,24 @@ const checkAppointmentConflict =
     const bookings =
       await firestoreService.getBookings();
 
+    const approvedBookings =
+      bookings.filter((booking) => {
+        return (
+          booking.counselorId ===
+            counselorId &&
+          booking.date === date &&
+          booking.status === "approved" &&
+          booking.time
+        );
+      });
+
     const toMinutes = (time) => {
       const [hours, minutes] =
         time.split(":").map(Number);
 
-      return hours * 60 + minutes;
+      return (
+        hours * 60 + minutes
+      );
     };
 
     const newStart =
@@ -178,40 +185,29 @@ const checkAppointmentConflict =
       toMinutes(endTime);
 
     const hasConflict =
-      bookings.some((booking) => {
-        /*
-         * Only approved appointments
-         * belonging to this counselor
-         * can cause a conflict.
-         */
-        if (
-          booking.status !== "approved" ||
-          booking.counselorId !==
-            counselorId ||
-          booking.date !== date ||
-          !booking.time
-        ) {
-          return false;
+      approvedBookings.some(
+        (booking) => {
+          const existingStart =
+            toMinutes(booking.time);
+
+          const existingEnd =
+            existingStart +
+            APPOINTMENT_DURATION_MINUTES;
+
+          return (
+            newStart < existingEnd &&
+            newEnd > existingStart
+          );
         }
-
-        const existingStart =
-          toMinutes(booking.time);
-
-        const existingEnd =
-          existingStart +
-          APPOINTMENT_DURATION_MINUTES;
-
-        return (
-          newStart < existingEnd &&
-          newEnd > existingStart
-        );
-      });
+      );
 
     if (hasConflict) {
       throw new Error(
         "The selected counselor already has an approved appointment during this time."
       );
     }
+
+    return true;
   };
 
 /**
@@ -245,7 +241,7 @@ const createAdminAppointment =
 
     /**
      * ----------------------------------------
-     * REQUIRED FIELDS
+     * BASIC VALIDATION
      * ----------------------------------------
      */
 
@@ -264,18 +260,6 @@ const createAdminAppointment =
     if (!phone?.trim()) {
       throw new Error(
         "Client phone number is required."
-      );
-    }
-
-    if (!date) {
-      throw new Error(
-        "Appointment date is required."
-      );
-    }
-
-    if (!time) {
-      throw new Error(
-        "Appointment time is required."
       );
     }
 
@@ -303,26 +287,32 @@ const createAdminAppointment =
       );
     }
 
-    /**
-     * ----------------------------------------
-     * VALIDATE DATE / TIME
-     * ----------------------------------------
-     */
-
     validateDate(date);
     validateTime(time);
+
+    /**
+     * ----------------------------------------
+     * FUTURE APPOINTMENT
+     * ----------------------------------------
+     */
 
     validateFutureAppointment(
       date,
       time
     );
 
+    /**
+     * ----------------------------------------
+     * APPOINTMENT END TIME
+     * ----------------------------------------
+     */
+
     const endTime =
       getAppointmentEndTime(time);
 
     /**
      * ----------------------------------------
-     * CHECK BLOCKED TIME
+     * CHECK BLOCKERS
      * ----------------------------------------
      */
 
@@ -348,7 +338,7 @@ const createAdminAppointment =
 
     /**
      * ----------------------------------------
-     * BUILD ADMIN BOOKING
+     * BUILD BOOKING
      * ----------------------------------------
      */
 
@@ -373,14 +363,14 @@ const createAdminAppointment =
         info?.trim() || "",
 
       /*
-       * Admin appointments are immediately
-       * approved.
+       * Admin appointments are
+       * immediately approved.
        */
       status: "approved",
 
       /*
-       * Clearly identify this as an
-       * admin-created appointment.
+       * This distinguishes the
+       * appointment from website bookings.
        */
       source: "admin",
 
@@ -390,6 +380,10 @@ const createAdminAppointment =
 
       counselorEmail,
 
+      /*
+       * Calendar details are added
+       * after Google Calendar creation.
+       */
       calendarEventId: null,
 
       googleMeetLink: null,
@@ -408,7 +402,7 @@ const createAdminAppointment =
      */
 
     console.log(
-      "📅 Creating admin appointment in Google Calendar..."
+      "📅 Creating Google Calendar appointment..."
     );
 
     const calendarResult =
@@ -416,9 +410,13 @@ const createAdminAppointment =
         booking
       );
 
+    console.log(
+      "✅ Google Calendar appointment created."
+    );
+
     /**
      * ----------------------------------------
-     * STORE CALENDAR DETAILS
+     * ADD CALENDAR DETAILS
      * ----------------------------------------
      */
 
@@ -437,7 +435,7 @@ const createAdminAppointment =
      */
 
     console.log(
-      "💾 Saving admin appointment..."
+      "💾 Saving admin appointment to Firestore..."
     );
 
     const bookingId =
@@ -445,12 +443,20 @@ const createAdminAppointment =
         booking
       );
 
+    console.log(
+      `✅ Admin appointment saved: ${bookingId}`
+    );
+
     /**
      * ----------------------------------------
      * SAVE CALENDAR DETAILS
      * ----------------------------------------
+     *
+     * saveBooking() already stores these,
+     * but updateCalendarDetails() keeps the
+     * Calendar update logic consistent with
+     * the existing booking system.
      */
-
     await firestoreService.updateCalendarDetails(
       bookingId,
       calendarResult
@@ -458,7 +464,7 @@ const createAdminAppointment =
 
     /**
      * ----------------------------------------
-     * GET SAVED BOOKING
+     * GET FINAL BOOKING
      * ----------------------------------------
      */
 
@@ -469,38 +475,53 @@ const createAdminAppointment =
 
     /**
      * ----------------------------------------
-     * SEND CLIENT + COUNSELOR EMAILS
+     * SEND EMAIL NOTIFICATIONS
      * ----------------------------------------
      *
-     * Existing notificationService already
-     * sends:
+     * The notification service receives the
+     * completed approved booking.
      *
-     * Client:
-     * booking.email
+     * This sends notifications to:
      *
-     * Counselor:
-     * booking.counselorEmail
+     * 1. Client
+     * 2. Counselor
      */
+    let notifications = {};
 
-    console.log(
-      "📧 Sending appointment emails..."
-    );
+    try {
+      notifications =
+        await notificationService.sendApprovalNotifications(
+          savedBooking
+        );
 
-    const notifications =
-      await notificationService.sendApprovalNotifications(
-        savedBooking
+      console.log(
+        "📧 Admin appointment notification emails sent."
       );
 
-    /**
-     * ----------------------------------------
-     * SAVE NOTIFICATION STATUS
-     * ----------------------------------------
-     */
+      await firestoreService.updateNotificationStatus(
+        bookingId,
+        notifications
+      );
+    } catch (emailError) {
+      console.error(
+        "⚠️ Appointment created, but email notification failed:",
+        emailError
+      );
 
-    await firestoreService.updateNotificationStatus(
-      bookingId,
-      notifications
-    );
+      /*
+       * Do NOT delete the appointment.
+       *
+       * The appointment itself was successfully
+       * created. Email failure is tracked
+       * separately.
+       */
+      notifications = {
+        success: false,
+        error:
+          emailError?.message ||
+          "Appointment emails could not be sent.",
+      };
+    }
 
     /**
      * ----------------------------------------
@@ -508,29 +529,13 @@ const createAdminAppointment =
      * ----------------------------------------
      */
 
-    console.log(
-      `✅ Admin appointment created successfully: ${bookingId}`
-    );
-
     return {
       success: true,
 
       message:
         "Appointment created successfully.",
 
-      booking: {
-        ...savedBooking,
-
-        calendarEventId:
-          calendarResult?.calendarEventId ||
-          savedBooking.calendarEventId ||
-          null,
-
-        googleMeetLink:
-          calendarResult?.googleMeetLink ||
-          savedBooking.googleMeetLink ||
-          null,
-      },
+      booking: savedBooking,
 
       calendar: calendarResult,
 
