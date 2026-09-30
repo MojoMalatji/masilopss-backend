@@ -1,46 +1,101 @@
-// services/adminAppointmentService.js
+// services/googleCalendarService.js
 
-const blockerService = require("./blockerService");
-const firestoreService = require("./firestoreService");
-const googleCalendarService = require("./googleCalendarService");
-const notificationService = require("./notificationService");
+const { google } = require("googleapis");
+
+const {
+  getAuthorizedClient,
+} = require("../config/googleAuth");
+
+// ========================================
+// CONFIGURATION
+// ========================================
+
+const TIME_ZONE =
+  "Africa/Johannesburg";
 
 const APPOINTMENT_DURATION_MINUTES = 60;
 
-/**
- * ========================================
- * VALIDATE DATE
- * ========================================
- */
-const validateDate = (date) => {
-  if (!date) {
-    throw new Error("Appointment date is required.");
+const CALENDAR_ID = "primary";
+
+// ========================================
+// HELPERS
+// ========================================
+
+const isOnlineAppointment = (
+  location
+) => {
+  if (!location) {
+    return false;
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  const normalizedLocation =
+    String(location)
+      .trim()
+      .toLowerCase();
+
+  return (
+    normalizedLocation.includes(
+      "online"
+    ) ||
+    normalizedLocation.includes(
+      "virtual"
+    ) ||
+    normalizedLocation.includes(
+      "remote"
+    ) ||
+    normalizedLocation.includes(
+      "google meet"
+    )
+  );
+};
+
+// ----------------------------------------
+// Validate date
+// ----------------------------------------
+
+const validateDate = (date) => {
+  if (!date) {
+    throw new Error(
+      "Appointment date is required."
+    );
+  }
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      date
+    )
+  ) {
     throw new Error(
       "Invalid appointment date. Expected YYYY-MM-DD."
     );
   }
 };
 
-/**
- * ========================================
- * VALIDATE TIME
- * ========================================
- */
+// ----------------------------------------
+// Validate time
+// ----------------------------------------
+
 const validateTime = (time) => {
   if (!time) {
-    throw new Error("Appointment time is required.");
+    throw new Error(
+      "Appointment time is required."
+    );
   }
 
-  if (!/^\d{2}:\d{2}$/.test(time)) {
+  if (
+    !/^\d{2}:\d{2}$/.test(
+      time
+    )
+  ) {
     throw new Error(
       "Invalid appointment time. Expected HH:MM."
     );
   }
 
-  const [hours, minutes] = time
+  const [
+    hours,
+    minutes,
+  ] = time
     .split(":")
     .map(Number);
 
@@ -50,184 +105,88 @@ const validateTime = (time) => {
     minutes < 0 ||
     minutes > 59
   ) {
-    throw new Error("Invalid appointment time.");
+    throw new Error(
+      "Invalid appointment time."
+    );
   }
 };
 
-/**
- * ========================================
- * GET APPOINTMENT END TIME
- * ========================================
- */
-const getAppointmentEndTime = (time) => {
-  const [hours, minutes] = time
+// ----------------------------------------
+// Calculate end time
+// ----------------------------------------
+
+const getAppointmentEndTime = (
+  time
+) => {
+  const [
+    hours,
+    minutes,
+  ] = time
     .split(":")
     .map(Number);
 
-  let totalMinutes =
+  const totalMinutes =
     hours * 60 +
     minutes +
     APPOINTMENT_DURATION_MINUTES;
 
-  totalMinutes %= 1440;
-
-  const endHours = Math.floor(
-    totalMinutes / 60
-  );
+  const endHours =
+    Math.floor(
+      totalMinutes / 60
+    ) % 24;
 
   const endMinutes =
     totalMinutes % 60;
 
-  return `${String(endHours).padStart(
+  return `${String(
+    endHours
+  ).padStart(
     2,
     "0"
-  )}:${String(endMinutes).padStart(
+  )}:${String(
+    endMinutes
+  ).padStart(
     2,
     "0"
   )}`;
 };
 
-/**
- * ========================================
- * VALIDATE FUTURE APPOINTMENT
- * ========================================
- */
-const validateFutureAppointment = (
-  date,
-  time
+// ----------------------------------------
+// Build attendee
+// ----------------------------------------
+
+const buildAttendee = (
+  email,
+  displayName
 ) => {
-  const appointmentDateTime =
-    new Date(`${date}T${time}:00`);
-
-  if (
-    Number.isNaN(
-      appointmentDateTime.getTime()
-    )
-  ) {
-    throw new Error(
-      "Invalid appointment date or time."
-    );
+  if (!email) {
+    return null;
   }
 
-  if (
-    appointmentDateTime.getTime() <=
-    Date.now()
-  ) {
-    throw new Error(
-      "The appointment must be scheduled for a future date and time."
-    );
-  }
+  return {
+    email,
+    ...(displayName
+      ? {
+          displayName,
+        }
+      : {}),
+  };
 };
 
-/**
- * ========================================
- * CHECK COUNSELOR BLOCKER
- * ========================================
- */
-const checkCounselorAvailability =
-  async ({
-    counselorId,
-    date,
-    startTime,
-    endTime,
-  }) => {
-    const available =
-      await blockerService.isCounselorAvailable({
-        counselorId,
-        date,
-        startTime,
-        endTime,
-      });
+// ========================================
+// CREATE CALENDAR EVENT
+// ========================================
 
-    /*
-     * blockerService returns a boolean.
-     */
-    if (!available) {
+const createCalendarEvent =
+  async (booking) => {
+    if (!booking) {
       throw new Error(
-        "The selected counselor is unavailable during this time because of a blocked period."
-      );
-    }
-  };
-
-/**
- * ========================================
- * CHECK APPOINTMENT CONFLICT
- * ========================================
- */
-const checkAppointmentConflict =
-  async ({
-    counselorId,
-    date,
-    startTime,
-    endTime,
-  }) => {
-    const bookings =
-      await firestoreService.getBookings();
-
-    const toMinutes = (time) => {
-      const [hours, minutes] =
-        time.split(":").map(Number);
-
-      return hours * 60 + minutes;
-    };
-
-    const newStart =
-      toMinutes(startTime);
-
-    const newEnd =
-      toMinutes(endTime);
-
-    const hasConflict =
-      bookings.some((booking) => {
-        /*
-         * Only approved appointments
-         * belonging to this counselor
-         * can cause a conflict.
-         */
-        if (
-          booking.status !== "approved" ||
-          booking.counselorId !==
-            counselorId ||
-          booking.date !== date ||
-          !booking.time
-        ) {
-          return false;
-        }
-
-        const existingStart =
-          toMinutes(booking.time);
-
-        const existingEnd =
-          existingStart +
-          APPOINTMENT_DURATION_MINUTES;
-
-        return (
-          newStart < existingEnd &&
-          newEnd > existingStart
-        );
-      });
-
-    if (hasConflict) {
-      throw new Error(
-        "The selected counselor already has an approved appointment during this time."
-      );
-    }
-  };
-
-/**
- * ========================================
- * CREATE ADMIN APPOINTMENT
- * ========================================
- */
-const createAdminAppointment =
-  async (appointmentData) => {
-    if (!appointmentData) {
-      throw new Error(
-        "Appointment data is required."
+        "Booking information is required to create a calendar event."
       );
     }
 
     const {
+      id,
       name,
       email,
       phone,
@@ -236,313 +195,391 @@ const createAdminAppointment =
       service,
       location,
       info,
-      counselorId,
       counselorName,
       counselorEmail,
-      createdBy,
-      updatedBy,
-    } = appointmentData;
+    } = booking;
 
-    /**
-     * ----------------------------------------
-     * REQUIRED FIELDS
-     * ----------------------------------------
-     */
+    // ------------------------------------
+    // Validate required information
+    // ------------------------------------
 
-    if (!name?.trim()) {
+    validateDate(date);
+    validateTime(time);
+
+    if (!email) {
       throw new Error(
-        "Client name is required."
-      );
-    }
-
-    if (!email?.trim()) {
-      throw new Error(
-        "Client email is required."
-      );
-    }
-
-    if (!phone?.trim()) {
-      throw new Error(
-        "Client phone number is required."
-      );
-    }
-
-    if (!date) {
-      throw new Error(
-        "Appointment date is required."
-      );
-    }
-
-    if (!time) {
-      throw new Error(
-        "Appointment time is required."
-      );
-    }
-
-    if (!service) {
-      throw new Error(
-        "Service is required."
-      );
-    }
-
-    if (!counselorId) {
-      throw new Error(
-        "Counselor is required."
-      );
-    }
-
-    if (!counselorName) {
-      throw new Error(
-        "Counselor name is required."
+        "Client email is required to create the calendar event."
       );
     }
 
     if (!counselorEmail) {
       throw new Error(
-        "Counselor email is required."
+        "Counselor email is required to create the calendar event."
       );
     }
 
-    /**
-     * ----------------------------------------
-     * VALIDATE DATE / TIME
-     * ----------------------------------------
-     */
+    // ------------------------------------
+    // Determine online/in-person
+    // ------------------------------------
 
-    validateDate(date);
-    validateTime(time);
+    const online =
+      isOnlineAppointment(
+        location
+      );
 
-    validateFutureAppointment(
-      date,
-      time
-    );
+    // ------------------------------------
+    // Calculate end time
+    // ------------------------------------
 
     const endTime =
-      getAppointmentEndTime(time);
-
-    /**
-     * ----------------------------------------
-     * CHECK BLOCKED TIME
-     * ----------------------------------------
-     */
-
-    await checkCounselorAvailability({
-      counselorId,
-      date,
-      startTime: time,
-      endTime,
-    });
-
-    /**
-     * ----------------------------------------
-     * CHECK EXISTING APPOINTMENTS
-     * ----------------------------------------
-     */
-
-    await checkAppointmentConflict({
-      counselorId,
-      date,
-      startTime: time,
-      endTime,
-    });
-
-    /**
-     * ----------------------------------------
-     * BUILD ADMIN BOOKING
-     * ----------------------------------------
-     */
-
-    const booking = {
-      name: name.trim(),
-
-      email:
-        email.trim().toLowerCase(),
-
-      phone: phone.trim(),
-
-      date,
-
-      time,
-
-      service,
-
-      location:
-        location?.trim() || "",
-
-      info:
-        info?.trim() || "",
-
-      /*
-       * Admin appointments are immediately
-       * approved.
-       */
-      status: "approved",
-
-      /*
-       * Clearly identify this as an
-       * admin-created appointment.
-       */
-      source: "admin",
-
-      counselorId,
-
-      counselorName,
-
-      counselorEmail,
-
-      calendarEventId: null,
-
-      googleMeetLink: null,
-
-      createdBy:
-        createdBy || "Admin",
-
-      updatedBy:
-        updatedBy || "Admin",
-    };
-
-    /**
-     * ----------------------------------------
-     * CREATE GOOGLE CALENDAR EVENT
-     * ----------------------------------------
-     */
-
-    console.log(
-      "📅 Creating admin appointment in Google Calendar..."
-    );
-
-    const calendarResult =
-      await googleCalendarService.createCalendarEvent(
-        booking
+      getAppointmentEndTime(
+        time
       );
 
-    /**
-     * ----------------------------------------
-     * STORE CALENDAR DETAILS
-     * ----------------------------------------
-     */
-
-    booking.calendarEventId =
-      calendarResult?.calendarEventId ||
-      null;
-
-    booking.googleMeetLink =
-      calendarResult?.googleMeetLink ||
-      null;
-
-    /**
-     * ----------------------------------------
-     * SAVE FIRESTORE
-     * ----------------------------------------
-     */
+    // ------------------------------------
+    // Google authentication
+    // ------------------------------------
 
     console.log(
-      "💾 Saving admin appointment..."
+      "🔐 Authorizing Google Calendar..."
     );
 
-    const bookingId =
-      await firestoreService.saveBooking(
-        booking
+    const auth =
+      await getAuthorizedClient();
+
+    if (!auth) {
+      throw new Error(
+        "Unable to authorize Google Calendar."
       );
+    }
 
-    /**
-     * ----------------------------------------
-     * SAVE CALENDAR DETAILS
-     * ----------------------------------------
-     */
+    // ------------------------------------
+    // Google Calendar client
+    // ------------------------------------
 
-    await firestoreService.updateCalendarDetails(
-      bookingId,
-      calendarResult
-    );
+    const calendar =
+      google.calendar({
+        version: "v3",
+        auth,
+      });
 
-    /**
-     * ----------------------------------------
-     * GET SAVED BOOKING
-     * ----------------------------------------
-     */
+    // ------------------------------------
+    // Attendees
+    // ------------------------------------
 
-    const savedBooking =
-      await firestoreService.getBookingById(
-        bookingId
-      );
+    const attendees = [
+      buildAttendee(
+        email,
+        name || "Client"
+      ),
 
-    /**
-     * ----------------------------------------
-     * SEND CLIENT + COUNSELOR EMAILS
-     * ----------------------------------------
-     *
-     * Existing notificationService already
-     * sends:
-     *
-     * Client:
-     * booking.email
-     *
-     * Counselor:
-     * booking.counselorEmail
-     */
+      buildAttendee(
+        counselorEmail,
+        counselorName ||
+          "Counselor"
+      ),
+    ].filter(Boolean);
 
-    console.log(
-      "📧 Sending appointment emails..."
-    );
+    // ------------------------------------
+    // Event description
+    // ------------------------------------
 
-    const notifications =
-      await notificationService.sendApprovalNotifications(
-        savedBooking
-      );
+    const descriptionParts = [
+      `Client: ${
+        name || "Not provided"
+      }`,
 
-    /**
-     * ----------------------------------------
-     * SAVE NOTIFICATION STATUS
-     * ----------------------------------------
-     */
+      `Email: ${
+        email || "Not provided"
+      }`,
 
-    await firestoreService.updateNotificationStatus(
-      bookingId,
-      notifications
-    );
+      `Phone: ${
+        phone || "Not provided"
+      }`,
 
-    /**
-     * ----------------------------------------
-     * RETURN RESULT
-     * ----------------------------------------
-     */
+      `Counselor: ${
+        counselorName ||
+        "Not assigned"
+      }`,
 
-    console.log(
-      `✅ Admin appointment created successfully: ${bookingId}`
-    );
+      `Counselor Email: ${
+        counselorEmail ||
+        "Not provided"
+      }`,
 
-    return {
-      success: true,
+      `Service: ${
+        service ||
+        "Consultation"
+      }`,
 
-      message:
-        "Appointment created successfully.",
+      `Location: ${
+        location ||
+        "Mashilo Psyché & Social Solutions"
+      }`,
 
-      booking: {
-        ...savedBooking,
+      info
+        ? `Additional Information:\n${info}`
+        : null,
 
-        calendarEventId:
-          calendarResult?.calendarEventId ||
-          savedBooking.calendarEventId ||
-          null,
+      id
+        ? `Booking ID: ${id}`
+        : null,
+    ].filter(Boolean);
 
-        googleMeetLink:
-          calendarResult?.googleMeetLink ||
-          savedBooking.googleMeetLink ||
-          null,
+    // ------------------------------------
+    // Base event
+    // ------------------------------------
+
+    const event = {
+      summary: `Mashilo PSS - ${
+        service ||
+        "Consultation"
+      }`,
+
+      description:
+        descriptionParts.join(
+          "\n"
+        ),
+
+      start: {
+        dateTime: `${date}T${time}:00`,
+        timeZone: TIME_ZONE,
       },
 
-      calendar: calendarResult,
+      end: {
+        dateTime: `${date}T${endTime}:00`,
+        timeZone: TIME_ZONE,
+      },
 
-      notifications,
+      attendees,
+
+      reminders: {
+        useDefault: true,
+      },
+
+      guestsCanModify: false,
+
+      guestsCanInviteOthers: false,
+
+      guestsCanSeeOtherGuests: true,
+    };
+
+    // ====================================
+    // ONLINE APPOINTMENT
+    // ====================================
+
+    if (online) {
+      console.log(
+        "🌐 Creating online appointment with Google Meet..."
+      );
+
+      event.conferenceData = {
+        createRequest: {
+          requestId: `mashilo-${id || "appointment"}-${Date.now()}`,
+
+          conferenceSolutionKey: {
+            type: "hangoutsMeet",
+          },
+        },
+      };
+    }
+
+    // ====================================
+    // IN-PERSON APPOINTMENT
+    // ====================================
+
+    if (!online) {
+      event.location =
+        location ||
+        "Mashilo Psyché & Social Solutions";
+    }
+
+    // ====================================
+    // CREATE EVENT
+    // ====================================
+
+    console.log(
+      "📅 Creating Google Calendar event..."
+    );
+
+    const response =
+      await calendar.events.insert({
+        calendarId:
+          CALENDAR_ID,
+
+        requestBody:
+          event,
+
+        sendUpdates: "all",
+
+        conferenceDataVersion:
+          online ? 1 : 0,
+      });
+
+    const createdEvent =
+      response.data;
+
+    if (!createdEvent?.id) {
+      throw new Error(
+        "Google Calendar did not return an event ID."
+      );
+    }
+
+    // ====================================
+    // GOOGLE MEET LINK
+    // ====================================
+
+    let googleMeetLink =
+      null;
+
+    if (online) {
+      googleMeetLink =
+        createdEvent
+          ?.conferenceData
+          ?.entryPoints
+          ?.find(
+            (entryPoint) =>
+              entryPoint.entryPointType ===
+              "video"
+          )?.uri ||
+        createdEvent?.hangoutLink ||
+        null;
+
+      if (!googleMeetLink) {
+        console.warn(
+          "⚠️ Google Calendar event was created, but no Google Meet link was returned."
+        );
+      }
+    }
+
+    // ====================================
+    // RESULT
+    // ====================================
+
+    console.log(
+      "✅ Google Calendar event created:",
+      createdEvent.id
+    );
+
+    if (googleMeetLink) {
+      console.log(
+        "🔗 Google Meet:",
+        googleMeetLink
+      );
+    }
+
+    return {
+      calendarEventId:
+        createdEvent.id,
+
+      calendarEventUrl:
+        createdEvent.htmlLink ||
+        null,
+
+      googleMeetLink,
+
+      isOnline: online,
     };
   };
 
-/**
- * ========================================
- * EXPORTS
- * ========================================
- */
+// ========================================
+// DELETE CALENDAR EVENT
+// ========================================
+
+const deleteCalendarEvent =
+  async (
+    calendarEventId
+  ) => {
+    if (!calendarEventId) {
+      console.log(
+        "ℹ️ No Google Calendar event ID supplied. Nothing to delete."
+      );
+
+      return {
+        success: true,
+        deleted: false,
+      };
+    }
+
+    try {
+      console.log(
+        `🗑️ Deleting Google Calendar event: ${calendarEventId}`
+      );
+
+      const auth =
+        await getAuthorizedClient();
+
+      if (!auth) {
+        throw new Error(
+          "Unable to authorize Google Calendar."
+        );
+      }
+
+      const calendar =
+        google.calendar({
+          version: "v3",
+          auth,
+        });
+
+      await calendar.events.delete(
+        {
+          calendarId:
+            CALENDAR_ID,
+
+          eventId:
+            calendarEventId,
+
+          sendUpdates: "all",
+        }
+      );
+
+      console.log(
+        "✅ Google Calendar event deleted."
+      );
+
+      return {
+        success: true,
+        deleted: true,
+      };
+    } catch (error) {
+      // ----------------------------------
+      // Google returns 404 if event already
+      // does not exist.
+      // ----------------------------------
+
+      if (
+        error?.code === 404 ||
+        error?.response?.status ===
+          404
+      ) {
+        console.warn(
+          "⚠️ Google Calendar event no longer exists."
+        );
+
+        return {
+          success: true,
+          deleted: false,
+          alreadyDeleted: true,
+        };
+      }
+
+      console.error(
+        "❌ Failed to delete Google Calendar event:",
+        error
+      );
+
+      throw new Error(
+        error?.message ||
+          "Failed to delete Google Calendar event."
+      );
+    }
+  };
+
+// ========================================
+// EXPORTS
+// ========================================
+
 module.exports = {
-  createAdminAppointment,
+  createCalendarEvent,
+  deleteCalendarEvent,
 };
