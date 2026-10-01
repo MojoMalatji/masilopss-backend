@@ -1,89 +1,26 @@
 // services/googleCalendarService.js
 
 const { google } = require("googleapis");
-const { getAuthorizedClient } = require("../config/googleAuth");
 
-const TIME_ZONE = "Africa/Johannesburg";
-const APPOINTMENT_DURATION_MINUTES = 60;
-const TARGET_CALENDAR_NAME = "Info";
+const {
+  getAuthorizedClient,
+} = require("../config/googleAuth");
 
-/**
- * ========================================
- * GET INFO CALENDAR
- * ========================================
- */
-const getTargetCalendar = async () => {
-  const auth = await getAuthorizedClient();
+const TIME_ZONE =
+  "Africa/Johannesburg";
 
-  const calendar = google.calendar({
-    version: "v3",
-    auth,
-  });
-
-  const response = await calendar.calendarList.list({
-    minAccessRole: "writer",
-  });
-
-  const calendars = response.data.items || [];
-
-  const targetCalendar = calendars.find(
-    (item) =>
-      item.summary?.trim().toLowerCase() ===
-      TARGET_CALENDAR_NAME.toLowerCase()
-  );
-
-  if (!targetCalendar?.id) {
-    console.error(
-      `❌ Google Calendar "${TARGET_CALENDAR_NAME}" was not found.`
-    );
-
-    console.log("Available calendars:");
-
-    calendars.forEach((item) => {
-      console.log(
-        `- ${item.summary} | ${item.id}`
-      );
-    });
-
-    throw new Error(
-      `Google Calendar "${TARGET_CALENDAR_NAME}" was not found or is not accessible.`
-    );
-  }
-
-  console.log(
-    `✅ Target calendar found: ${targetCalendar.summary}`
-  );
-
-  console.log(
-    `📅 Calendar ID: ${targetCalendar.id}`
-  );
-
-  return {
-    calendar,
-    calendarId: targetCalendar.id,
-  };
-};
+const INFO_EMAIL =
+  "info@mashilopss.co.za";
 
 /**
  * ========================================
  * CREATE CALENDAR EVENT
  * ========================================
- *
- * IMPORTANT:
- *
- * The Info calendar is the CENTRAL calendar.
- *
- * One appointment = ONE Google Calendar event.
- *
- * The event is created on the Info calendar.
- *
- * The client and counselor are attendees
- * of that same event.
- *
- * We do NOT create separate events for
- * the counselor and Info.
  */
-const createCalendarEvent = async (booking) => {
+
+const createCalendarEvent = async (
+  booking
+) => {
   if (!booking) {
     throw new Error(
       "Booking information is required."
@@ -116,97 +53,71 @@ const createCalendarEvent = async (booking) => {
 
   /**
    * ========================================
-   * START / END
+   * GOOGLE AUTH
+   * ========================================
+   */
+
+  const auth =
+    await getAuthorizedClient();
+
+  const calendar =
+    google.calendar({
+      version: "v3",
+      auth,
+    });
+
+  /**
+   * ========================================
+   * START / END TIME
    * ========================================
    */
 
   const startDateTime =
     `${booking.date}T${booking.time}:00`;
 
-  const start = new Date(startDateTime);
-
-  if (Number.isNaN(start.getTime())) {
-    throw new Error(
-      "Invalid appointment date or time."
-    );
-  }
-
-  const end = new Date(start);
-
-  end.setMinutes(
-    end.getMinutes() +
-      APPOINTMENT_DURATION_MINUTES
-  );
-
-  /**
-   * ========================================
-   * LOCATION
-   * ========================================
-   */
-
-  const location =
-    booking.location?.trim() || "";
-
-  const online =
-    /online|google meet|virtual|remote/i.test(
-      location
+  const endTime =
+    booking.endTime ||
+    calculateEndTime(
+      booking.time
     );
 
-  /**
-   * ========================================
-   * INFO CALENDAR
-   * ========================================
-   */
-
-  const {
-    calendar,
-    calendarId,
-  } = await getTargetCalendar();
+  const endDateTime =
+    `${booking.date}T${endTime}:00`;
 
   /**
    * ========================================
    * ATTENDEES
    * ========================================
-   *
-   * The event lives on Info.
-   *
-   * Counselor receives the same event.
-   *
-   * Client receives the same event.
-   *
-   * No separate counselor event is created.
    */
 
   const attendees = [];
 
-  /**
-   * CLIENT
-   */
-  if (booking.email) {
-    attendees.push({
-      email: booking.email.trim(),
+  // INFO
+  attendees.push({
+    email: INFO_EMAIL,
+    displayName:
+      "Mashilo Psyché & Social Solutions",
+  });
 
-      displayName:
-        booking.name?.trim() ||
-        "Client",
-
-      responseStatus: "accepted",
-    });
-  }
-
-  /**
-   * COUNSELOR
-   */
+  // COUNSELOR
   if (booking.counselorEmail) {
     attendees.push({
       email:
-        booking.counselorEmail.trim(),
-
+        booking.counselorEmail,
       displayName:
-        booking.counselorName?.trim() ||
+        booking.counselorName ||
         "Counselor",
+    });
+  }
 
-      responseStatus: "accepted",
+  // CLIENT
+  if (booking.email) {
+    attendees.push({
+      email:
+        booking.email,
+      displayName:
+        booking.name ||
+        "Client",
     });
   }
 
@@ -218,277 +129,98 @@ const createCalendarEvent = async (booking) => {
 
   const event = {
     summary:
-      `Mashilo PSS - ${
-        booking.service ||
-        "Consultation"
+      `Appointment - ${
+        booking.name || "Client"
       }`,
 
     description: `
-Client: ${booking.name || "—"}
-Email: ${booking.email || "—"}
-Phone: ${booking.phone || "—"}
+Mashilo Psyché & Social Solutions
 
-Service: ${booking.service || "—"}
+APPOINTMENT
 
-Counselor: ${
-      booking.counselorName || "—"
-    }
+Client:
+${booking.name || "N/A"}
 
-Counselor Email: ${
-      booking.counselorEmail || "—"
-    }
+Email:
+${booking.email || "N/A"}
 
-Appointment Status: Approved
+Phone:
+${booking.phone || "N/A"}
 
-Appointment Source: ${
-      booking.source || "admin"
-    }
+Service:
+${booking.service || "N/A"}
+
+Counselor:
+${booking.counselorName || "N/A"}
+
+Date:
+${booking.date}
+
+Time:
+${booking.time} - ${endTime}
+
+Location:
+${booking.location || "N/A"}
 
 Additional Information:
 ${booking.info || "None"}
-
-Created by:
-${booking.createdBy || "Admin"}
-`.trim(),
+    `.trim(),
 
     start: {
-      dateTime: start.toISOString(),
-      timeZone: TIME_ZONE,
+      dateTime:
+        startDateTime,
+      timeZone:
+        TIME_ZONE,
     },
 
     end: {
-      dateTime: end.toISOString(),
-      timeZone: TIME_ZONE,
+      dateTime:
+        endDateTime,
+      timeZone:
+        TIME_ZONE,
     },
+
+    location:
+      booking.location || undefined,
 
     attendees,
 
-    /**
-     * Tell Google that this event has
-     * already been confirmed.
-     */
-    status: "confirmed",
-
     reminders: {
-      useDefault: false,
-
-      overrides: [
-        {
-          method: "email",
-          minutes: 24 * 60,
-        },
-        {
-          method: "popup",
-          minutes: 30,
-        },
-      ],
+      useDefault: true,
     },
-
-    /**
-     * Physical appointment location.
-     */
-    ...(online
-      ? {}
-      : {
-          location:
-            location ||
-            "Mashilo Psyché & Social Solutions",
-        }),
   };
 
-  /**
-   * ========================================
-   * GOOGLE MEET
-   * ========================================
-   */
-
-  if (online) {
-    event.conferenceData = {
-      createRequest: {
-        requestId:
-          `mashilo-${Date.now()}-${Math.random()
-            .toString(36)
-            .substring(2, 10)}`,
-
-        conferenceSolutionKey: {
-          type: "hangoutsMeet",
-        },
-      },
-    };
-  }
-
-  /**
-   * ========================================
-   * LOG
-   * ========================================
-   */
-
   console.log(
-    "📅 Creating central Info Calendar appointment..."
+    "📅 Creating appointment on primary Google Calendar..."
   );
 
   console.log(
-    "Central Calendar:",
-    TARGET_CALENDAR_NAME
-  );
-
-  console.log(
-    "Calendar ID:",
-    calendarId
-  );
-
-  console.log(
-    "Client:",
-    booking.email
-  );
-
-  console.log(
-    "Counselor:",
-    booking.counselorEmail
-  );
-
-  console.log(
-    "Start:",
-    startDateTime
-  );
-
-  console.log(
-    "End:",
-    end.toISOString()
+    "👥 Calendar attendees:",
+    attendees
   );
 
   /**
    * ========================================
-   * INSERT EVENT
+   * CREATE EVENT
    * ========================================
    *
-   * ONE event is created on Info.
-   *
-   * sendUpdates: "all" sends the event
-   * invitation/update to the attendees.
+   * EXACT SAME CALENDAR MECHANISM
+   * USED BY THE WORKING BLOCKER.
    */
 
   const response =
     await calendar.events.insert({
-      calendarId,
-
+      calendarId: "primary",
       resource: event,
-
       sendUpdates: "all",
-
-      conferenceDataVersion:
-        online ? 1 : 0,
     });
 
   const createdEvent =
     response.data;
-console.log(
-  "================ GOOGLE EVENT DEBUG ================"
-);
-
-console.log(
-  "Requested calendar ID:",
-  calendarId
-);
-
-console.log(
-  "Requested calendar name:",
-  TARGET_CALENDAR_NAME
-);
-
-console.log(
-  "Created event ID:",
-  createdEvent.id
-);
-
-console.log(
-  "Created event organizer:",
-  createdEvent.organizer
-);
-
-console.log(
-  "Created event creator:",
-  createdEvent.creator
-);
-
-console.log(
-  "Created event attendees:",
-  createdEvent.attendees
-);
-
-console.log(
-  "Created event HTML link:",
-  createdEvent.htmlLink
-);
-
-console.log(
-  "===================================================="
-);
-  if (!createdEvent?.id) {
-    throw new Error(
-      "Google Calendar did not return an event ID."
-    );
-  }
-
-  /**
-   * ========================================
-   * GOOGLE MEET LINK
-   * ========================================
-   */
-
-  let googleMeetLink = null;
-
-  if (
-    createdEvent.conferenceData
-      ?.entryPoints
-  ) {
-    const videoEntry =
-      createdEvent.conferenceData.entryPoints.find(
-        (entry) =>
-          entry.entryPointType ===
-          "video"
-      );
-
-    googleMeetLink =
-      videoEntry?.uri || null;
-  }
-
-  /**
-   * ========================================
-   * RESULT
-   * ========================================
-   */
 
   console.log(
-    "✅ Central Info Calendar appointment created."
+    `✅ Appointment calendar event created: ${createdEvent.id}`
   );
-
-  console.log(
-    "Event ID:",
-    createdEvent.id
-  );
-
-  console.log(
-    "Event URL:",
-    createdEvent.htmlLink
-  );
-
-  console.log(
-    "Counselor attendee:",
-    booking.counselorEmail
-  );
-
-  console.log(
-    "Client attendee:",
-    booking.email
-  );
-
-  if (googleMeetLink) {
-    console.log(
-      "Google Meet:",
-      googleMeetLink
-    );
-  }
 
   return {
     calendarEventId:
@@ -498,73 +230,113 @@ console.log(
       createdEvent.htmlLink ||
       null,
 
-    googleMeetLink,
-
-    isOnline: online,
-
-    calendarId,
-
-    calendarName:
-      TARGET_CALENDAR_NAME,
-
-    counselorEmail:
-      booking.counselorEmail,
-
-    clientEmail:
-      booking.email,
+    googleMeetLink:
+      createdEvent.hangoutLink ||
+      null,
   };
+};
+
+/**
+ * ========================================
+ * CALCULATE END TIME
+ * ========================================
+ */
+
+const calculateEndTime = (
+  time
+) => {
+  const [hours, minutes] =
+    time.split(":").map(Number);
+
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
+    throw new Error(
+      "Invalid appointment time."
+    );
+  }
+
+  const startMinutes =
+    hours * 60 + minutes;
+
+  const endMinutes =
+    startMinutes + 60;
+
+  const endHours =
+    Math.floor(endMinutes / 60) % 24;
+
+  const endMinutesValue =
+    endMinutes % 60;
+
+  return `${String(endHours).padStart(
+    2,
+    "0"
+  )}:${String(endMinutesValue).padStart(
+    2,
+    "0"
+  )}`;
 };
 
 /**
  * ========================================
  * DELETE CALENDAR EVENT
  * ========================================
- *
- * Deletes the CENTRAL Info event.
- *
- * Because counselor and client are
- * attendees of the same event, deleting
- * this event removes it from the central
- * calendar and sends the cancellation
- * update to the attendees.
  */
+
 const deleteCalendarEvent = async (
-  eventId
+  calendarEventId
 ) => {
-  if (!eventId) {
-    throw new Error(
-      "Calendar event ID is required."
-    );
+  if (!calendarEventId) {
+    return {
+      deleted: false,
+      reason:
+        "No Google Calendar event ID.",
+    };
   }
 
-  const {
-    calendar,
-    calendarId,
-  } = await getTargetCalendar();
+  const auth =
+    await getAuthorizedClient();
 
-  await calendar.events.delete({
-    calendarId,
+  const calendar =
+    google.calendar({
+      version: "v3",
+      auth,
+    });
 
-    eventId,
+  try {
+    await calendar.events.delete({
+      calendarId: "primary",
+      eventId:
+        calendarEventId,
+      sendUpdates: "all",
+    });
 
-    sendUpdates: "all",
-  });
+    console.log(
+      `✅ Google Calendar appointment deleted: ${calendarEventId}`
+    );
 
-  console.log(
-    `🗑️ Central Info Calendar event deleted: ${eventId}`
-  );
+    return {
+      deleted: true,
+      calendarEventId,
+    };
+  } catch (error) {
+    if (
+      error?.code === 404
+    ) {
+      console.log(
+        "ℹ️ Google Calendar appointment was already deleted."
+      );
 
-  return {
-    success: true,
+      return {
+        deleted: true,
+        alreadyDeleted: true,
+        calendarEventId,
+      };
+    }
 
-    calendarId,
-
-    calendarName:
-      TARGET_CALENDAR_NAME,
-
-    calendarEventId:
-      eventId,
-  };
+    throw error;
+  }
 };
 
 /**

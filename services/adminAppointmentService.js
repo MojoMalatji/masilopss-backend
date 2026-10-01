@@ -1,6 +1,5 @@
 // services/adminAppointmentService.js
 
-const blockerService = require("./blockerService");
 const firestoreService = require("./firestoreService");
 const googleCalendarService = require("./googleCalendarService");
 const notificationService = require("./notificationService");
@@ -14,39 +13,29 @@ const APPOINTMENT_DURATION_MINUTES = 60;
  */
 
 const createDateTime = (date, time) => {
-  const dateTime = new Date(
-    `${date}T${time}:00`
-  );
+  const dateTime = new Date(`${date}T${time}:00`);
 
   if (Number.isNaN(dateTime.getTime())) {
-    throw new Error(
-      "Invalid appointment date or time."
-    );
+    throw new Error("Invalid appointment date or time.");
   }
 
   return dateTime;
 };
 
 const calculateEndTime = (time) => {
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
 
   if (
     Number.isNaN(hours) ||
     Number.isNaN(minutes)
   ) {
-    throw new Error(
-      "Invalid appointment time."
-    );
+    throw new Error("Invalid appointment time.");
   }
 
-  const startMinutes =
-    hours * 60 + minutes;
+  const startMinutes = hours * 60 + minutes;
 
   const endMinutes =
-    startMinutes +
-    APPOINTMENT_DURATION_MINUTES;
+    startMinutes + APPOINTMENT_DURATION_MINUTES;
 
   const endHours =
     Math.floor(endMinutes / 60) % 24;
@@ -68,17 +57,17 @@ const calculateEndTime = (time) => {
  * CREATE ADMIN APPOINTMENT
  * ========================================
  *
- * Admin-created appointments are:
+ * Admin-created appointments:
  *
- * - Immediately approved
- * - Added to the central Info calendar
- * - Counselor added as attendee
- * - Client added as attendee
- * - No approval step required
+ * - Are immediately approved
+ * - Are saved to Firestore
+ * - Are added to Google Calendar
+ * - Counselor is an attendee
+ * - Client is an attendee
  *
- * The Google Calendar service creates
- * ONE central event on Info.
+ * No availability checking is performed here.
  */
+
 const createAdminAppointment = async (
   appointmentData
 ) => {
@@ -105,57 +94,39 @@ const createAdminAppointment = async (
    */
 
   if (!name?.trim()) {
-    throw new Error(
-      "Client name is required."
-    );
+    throw new Error("Client name is required.");
   }
 
   if (!email?.trim()) {
-    throw new Error(
-      "Client email is required."
-    );
+    throw new Error("Client email is required.");
   }
 
   if (!phone?.trim()) {
-    throw new Error(
-      "Client phone number is required."
-    );
+    throw new Error("Client phone number is required.");
   }
 
   if (!date) {
-    throw new Error(
-      "Appointment date is required."
-    );
+    throw new Error("Appointment date is required.");
   }
 
   if (!time) {
-    throw new Error(
-      "Appointment time is required."
-    );
+    throw new Error("Appointment time is required.");
   }
 
   if (!service) {
-    throw new Error(
-      "Appointment service is required."
-    );
+    throw new Error("Appointment service is required.");
   }
 
   if (!counselorId) {
-    throw new Error(
-      "Counselor is required."
-    );
+    throw new Error("Counselor is required.");
   }
 
   if (!counselorName?.trim()) {
-    throw new Error(
-      "Counselor name is required."
-    );
+    throw new Error("Counselor name is required.");
   }
 
   if (!counselorEmail?.trim()) {
-    throw new Error(
-      "Counselor email is required."
-    );
+    throw new Error("Counselor email is required.");
   }
 
   /**
@@ -164,20 +135,18 @@ const createAdminAppointment = async (
    * ========================================
    */
 
-  const normalizedName =
-    name.trim();
+  const normalizedName = name.trim();
 
   const normalizedEmail =
-    email.trim();
+    email.trim().toLowerCase();
 
-  const normalizedPhone =
-    phone.trim();
+  const normalizedPhone = phone.trim();
 
   const normalizedCounselorName =
     counselorName.trim();
 
   const normalizedCounselorEmail =
-    counselorEmail.trim();
+    counselorEmail.trim().toLowerCase();
 
   /**
    * ========================================
@@ -185,11 +154,10 @@ const createAdminAppointment = async (
    * ========================================
    */
 
-  const startDateTime =
-    createDateTime(
-      date,
-      time
-    );
+  const startDateTime = createDateTime(
+    date,
+    time
+  );
 
   const now = new Date();
 
@@ -205,119 +173,20 @@ const createAdminAppointment = async (
    * ========================================
    */
 
-  const endTime =
-    calculateEndTime(time);
-
-  /**
-   * ========================================
-   * CHECK COUNSELOR AVAILABILITY
-   * ========================================
-   */
-
-  const counselorAvailability =
-    await blockerService.isCounselorAvailable(
-      counselorId,
-      date,
-      time,
-      endTime
-    );
-
-  if (!counselorAvailability) {
-    throw new Error(
-      "The selected counselor is not available at this time."
-    );
-  }
-
-  /**
-   * ========================================
-   * CHECK EXISTING APPROVED BOOKINGS
-   * ========================================
-   */
-
-  const existingAppointments =
-    await firestoreService.getBookingsByDate(
-      date
-    );
-
-  const conflictingAppointment =
-    existingAppointments.find(
-      (appointment) => {
-        if (
-          appointment.status !==
-          "approved"
-        ) {
-          return false;
-        }
-
-        if (
-          appointment.counselorId !==
-          counselorId
-        ) {
-          return false;
-        }
-
-        if (!appointment.time) {
-          return false;
-        }
-
-        const existingStart =
-          createDateTime(
-            appointment.date,
-            appointment.time
-          );
-
-        const existingEndTime =
-          appointment.endTime ||
-          calculateEndTime(
-            appointment.time
-          );
-
-        const existingEnd =
-          createDateTime(
-            appointment.date,
-            existingEndTime
-          );
-
-        const newEnd =
-          createDateTime(
-            date,
-            endTime
-          );
-
-        return (
-          startDateTime <
-            existingEnd &&
-          newEnd >
-            existingStart
-        );
-      }
-    );
-
-  if (conflictingAppointment) {
-    throw new Error(
-      "The counselor already has an appointment scheduled during this time."
-    );
-  }
+  const endTime = calculateEndTime(time);
 
   /**
    * ========================================
    * BUILD BOOKING
    * ========================================
-   *
-   * IMPORTANT:
-   *
-   * Admin appointments are approved
-   * immediately.
    */
+
   const booking = {
-    name:
-      normalizedName,
+    name: normalizedName,
 
-    email:
-      normalizedEmail,
+    email: normalizedEmail,
 
-    phone:
-      normalizedPhone,
+    phone: normalizedPhone,
 
     date,
 
@@ -327,17 +196,13 @@ const createAdminAppointment = async (
 
     service,
 
-    location:
-      location?.trim() || "",
+    location: location?.trim() || "",
 
-    info:
-      info?.trim() || "",
+    info: info?.trim() || "",
 
-    status:
-      "approved",
+    status: "approved",
 
-    source:
-      "admin",
+    source: "admin",
 
     counselorId,
 
@@ -347,14 +212,9 @@ const createAdminAppointment = async (
     counselorEmail:
       normalizedCounselorEmail,
 
-    calendarEventId:
-      null,
+    calendarEventId: null,
 
-    googleMeetLink:
-      null,
-
-    calendarEventUrl:
-      null,
+    googleMeetLink: null,
 
     createdBy:
       createdBy || "Admin",
@@ -370,16 +230,12 @@ const createAdminAppointment = async (
 
   /**
    * ========================================
-   * CREATE CENTRAL INFO CALENDAR EVENT
+   * CREATE GOOGLE CALENDAR EVENT
    * ========================================
    *
-   * This creates ONE event on the Info
-   * calendar.
-   *
-   * The counselor and client are attendees
-   * of that same event.
-   *
-   * No approval is required.
+   * The googleCalendarService is responsible
+   * for creating the event on the configured
+   * primary Google Calendar.
    */
 
   let calendarResult = null;
@@ -391,23 +247,26 @@ const createAdminAppointment = async (
       );
 
     console.log(
-      "✅ Central Info Calendar event created:",
+      "✅ Google Calendar event created:",
       calendarResult
     );
   } catch (error) {
     console.error(
       "❌ Google Calendar event creation failed:",
-      error.message
+      error
     );
 
     throw new Error(
-      `Appointment could not be added to Google Calendar: ${error.message}`
+      `Appointment could not be added to Google Calendar: ${
+        error?.message ||
+        "Unknown Google Calendar error."
+      }`
     );
   }
 
   /**
    * ========================================
-   * SAVE CALENDAR DETAILS
+   * ADD CALENDAR DETAILS TO BOOKING
    * ========================================
    */
 
@@ -419,23 +278,27 @@ const createAdminAppointment = async (
     booking.googleMeetLink =
       calendarResult.googleMeetLink ||
       null;
-
-    booking.calendarEventUrl =
-      calendarResult.calendarEventUrl ||
-      null;
   }
 
   /**
    * ========================================
    * SAVE BOOKING TO FIRESTORE
    * ========================================
+   *
+   * IMPORTANT:
+   *
+   * The Firestore service uses:
+   *
+   * firestoreService.saveBooking()
+   *
+   * NOT createBooking().
    */
 
   let bookingId;
 
   try {
     bookingId =
-      await firestoreService.createBooking(
+      await firestoreService.saveBooking(
         booking
       );
 
@@ -445,12 +308,12 @@ const createAdminAppointment = async (
   } catch (error) {
     console.error(
       "❌ Failed to save admin appointment to Firestore:",
-      error.message
+      error
     );
 
     /**
-     * Clean up the central Info event
-     * if Firestore fails.
+     * Remove the Calendar event if Firestore
+     * could not save the appointment.
      */
     if (
       calendarResult?.calendarEventId
@@ -461,48 +324,59 @@ const createAdminAppointment = async (
         );
 
         console.log(
-          "🗑️ Orphan Info Calendar event removed."
+          "🗑️ Orphan Google Calendar event removed."
         );
       } catch (cleanupError) {
         console.error(
           "❌ Failed to remove orphan Calendar event:",
-          cleanupError.message
+          cleanupError
         );
       }
     }
 
     throw new Error(
-      `Appointment could not be saved: ${error.message}`
+      `Appointment could not be saved: ${
+        error?.message ||
+        "Unknown Firestore error."
+      }`
     );
   }
 
   /**
    * ========================================
-   * UPDATE CALENDAR DETAILS
+   * SAVE CALENDAR DETAILS
    * ========================================
+   *
+   * Firestore saveBooking() creates the
+   * appointment first.
+   *
+   * Then we update the same document with
+   * the Calendar event information.
    */
 
-  try {
-    await firestoreService.updateCalendarDetails(
-      bookingId,
-      calendarResult
-    );
+  if (calendarResult) {
+    try {
+      await firestoreService.updateCalendarDetails(
+        bookingId,
+        calendarResult
+      );
 
-    console.log(
-      "✅ Calendar details saved to booking."
-    );
-  } catch (error) {
-    console.error(
-      "⚠️ Failed to update calendar details:",
-      error.message
-    );
+      console.log(
+        "✅ Calendar details saved to booking."
+      );
+    } catch (error) {
+      console.error(
+        "⚠️ Failed to update calendar details:",
+        error
+      );
 
-    /**
-     * Do not fail the appointment.
-     *
-     * The appointment and Google Calendar
-     * event already exist.
-     */
+      /**
+       * Do not fail the appointment here.
+       *
+       * The appointment already exists in
+       * Firestore and the Calendar event exists.
+       */
+    }
   }
 
   /**
@@ -521,7 +395,7 @@ const createAdminAppointment = async (
   } catch (error) {
     console.error(
       "⚠️ Could not reload saved booking:",
-      error.message
+      error
     );
 
     savedBooking = {
@@ -532,17 +406,8 @@ const createAdminAppointment = async (
 
   /**
    * ========================================
-   * ADMIN APPOINTMENT NOTIFICATIONS
+   * SEND ADMIN APPOINTMENT NOTIFICATIONS
    * ========================================
-   *
-   * IMPORTANT:
-   *
-   * Do NOT call sendApprovalNotifications().
-   *
-   * Admin appointments are already approved.
-   *
-   * Use the "Appointment Scheduled"
-   * notification instead.
    */
 
   let notifications = null;
@@ -560,12 +425,12 @@ const createAdminAppointment = async (
   } catch (error) {
     console.error(
       "⚠️ Admin appointment notification process failed:",
-      error.message
+      error
     );
 
     /**
-     * Notification failure does not
-     * invalidate the appointment.
+     * Notification failure does not invalidate
+     * the appointment.
      */
   }
 
@@ -576,17 +441,14 @@ const createAdminAppointment = async (
    */
 
   return {
-    success:
-      true,
+    success: true,
 
     message:
       "Appointment created successfully.",
 
-    booking:
-      savedBooking,
+    booking: savedBooking,
 
-    calendar:
-      calendarResult,
+    calendar: calendarResult,
 
     notifications,
   };
