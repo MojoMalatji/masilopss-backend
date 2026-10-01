@@ -58,24 +58,15 @@ const toDateTime = (date, time) => {
   return new Date(`${date}T${time}:00+02:00`);
 };
 
-const getAppointmentEndTime = (
-  date,
-  time
-) => {
-  const startDateTime = toDateTime(
-    date,
-    time
-  );
+const getAppointmentEndTime = (date, time) => {
+  const startDateTime = toDateTime(date, time);
 
   const endDateTime = new Date(
     startDateTime.getTime() +
-      APPOINTMENT_DURATION_MINUTES *
-        60 *
-        1000
+      APPOINTMENT_DURATION_MINUTES * 60 * 1000
   );
 
-  const year =
-    endDateTime.getFullYear();
+  const year = endDateTime.getFullYear();
 
   const month = String(
     endDateTime.getMonth() + 1
@@ -104,12 +95,11 @@ const getAppointmentEndTime = (
 // Validate Future Appointment
 // ----------------------------------------
 
-const validateFutureAppointment = (
-  date,
-  time
-) => {
-  const appointmentDateTime =
-    toDateTime(date, time);
+const validateFutureAppointment = (date, time) => {
+  const appointmentDateTime = toDateTime(
+    date,
+    time
+  );
 
   if (
     appointmentDateTime.getTime() <=
@@ -127,165 +117,52 @@ const validateFutureAppointment = (
 // Check Counselor Availability
 // ----------------------------------------
 
-const checkCounselorAvailability =
-  async ({
-    counselorId,
+const checkCounselorAvailability = async ({
+  counselorId,
+  date,
+  time,
+}) => {
+  if (!counselorId) {
+    throw new Error("Counselor ID is required.");
+  }
+
+  const end = getAppointmentEndTime(
     date,
-    time,
-  }) => {
-    if (!counselorId) {
-      throw new Error(
-        "Counselor ID is required."
-      );
-    }
+    time
+  );
 
-    const end =
-      getAppointmentEndTime(
-        date,
-        time
-      );
+  const availability =
+    await blockerService.isCounselorAvailable({
+      counselorId,
+      date,
+      startTime: time,
+      endTime: end.time,
+    });
 
-    const availability =
-      await blockerService.isCounselorAvailable(
-        {
-          counselorId,
-          date,
-          startTime: time,
-          endTime: end.time,
-        }
-      );
+  const isAvailable =
+    typeof availability === "boolean"
+      ? availability
+      : availability?.available;
 
-    /*
-     * Support both possible return formats:
-     *
-     * { available: true }
-     *
-     * or
-     *
-     * true
-     */
-
-    const isAvailable =
-      typeof availability === "boolean"
-        ? availability
-        : availability?.available;
-
-    if (!isAvailable) {
-      const error = new Error(
-        availability?.reason ||
-          "Counselor is unavailable during this time."
-      );
-
-      error.statusCode = 409;
-
-      throw error;
-    }
-
-    return availability;
-  };
-
-// ----------------------------------------
-// Check Existing Approved Appointment
-// ----------------------------------------
-
-const checkAppointmentConflict =
-  async ({
-    counselorId,
-    date,
-    time,
-    excludeBookingId = null,
-  }) => {
-    if (!counselorId) {
-      throw new Error(
-        "Counselor ID is required."
-      );
-    }
-
-    const bookings =
-      await firestoreService.getBookings();
-
-    const newStart =
-      toDateTime(date, time);
-
-    const newEnd = new Date(
-      newStart.getTime() +
-        APPOINTMENT_DURATION_MINUTES *
-          60 *
-          1000
+  if (!isAvailable) {
+    const error = new Error(
+      availability?.reason ||
+        "Counselor is unavailable during this time."
     );
 
-    for (const booking of bookings) {
-      if (
-        booking.id ===
-        excludeBookingId
-      ) {
-        continue;
-      }
+    error.statusCode = 409;
 
-      if (
-        booking.counselorId !==
-        counselorId
-      ) {
-        continue;
-      }
+    throw error;
+  }
 
-      if (
-        booking.status !==
-        "approved"
-      ) {
-        continue;
-      }
-
-      if (
-        booking.date !==
-        date
-      ) {
-        continue;
-      }
-
-      if (!booking.time) {
-        continue;
-      }
-
-      const existingStart =
-        toDateTime(
-          booking.date,
-          booking.time
-        );
-
-      const existingEnd =
-        new Date(
-          existingStart.getTime() +
-            APPOINTMENT_DURATION_MINUTES *
-              60 *
-              1000
-        );
-
-      const overlaps =
-        newStart <
-          existingEnd &&
-        newEnd >
-          existingStart;
-
-      if (overlaps) {
-        const error = new Error(
-          `This counselor already has an approved appointment at ${booking.time} on ${booking.date}.`
-        );
-
-        error.statusCode = 409;
-
-        throw error;
-      }
-    }
-  };
+  return availability;
+};
 
 // ----------------------------------------
 // CREATE WEBSITE / ADMIN BOOKING
 // ----------------------------------------
 
-const createBooking = async (
-  bookingData
-) => {
+const createBooking = async (bookingData) => {
   if (!bookingData) {
     throw new Error(
       "Booking information is required."
@@ -302,7 +179,6 @@ const createBooking = async (
     location,
     info,
 
-    // Admin-specific fields
     source,
     counselorId,
     counselorName,
@@ -317,9 +193,7 @@ const createBooking = async (
   // --------------------------------------
 
   if (!name?.trim()) {
-    throw new Error(
-      "Full name is required."
-    );
+    throw new Error("Full name is required.");
   }
 
   if (!email?.trim()) {
@@ -347,25 +221,18 @@ const createBooking = async (
   }
 
   if (!service) {
-    throw new Error(
-      "Service is required."
-    );
+    throw new Error("Service is required.");
   }
 
   if (!location) {
-    throw new Error(
-      "Location is required."
-    );
+    throw new Error("Location is required.");
   }
 
   // --------------------------------------
   // Validate date/time
   // --------------------------------------
 
-  validateFutureAppointment(
-    date,
-    time
-  );
+  validateFutureAppointment(date, time);
 
   // --------------------------------------
   // Determine booking source
@@ -409,25 +276,11 @@ const createBooking = async (
     // Check counselor availability
     // --------------------------------------
 
-    await checkCounselorAvailability(
-      {
-        counselorId,
-        date,
-        time,
-      }
-    );
-
-    // --------------------------------------
-    // Check appointment conflicts
-    // --------------------------------------
-
-    await checkAppointmentConflict(
-      {
-        counselorId,
-        date,
-        time,
-      }
-    );
+    await checkCounselorAvailability({
+      counselorId,
+      date,
+      time,
+    });
 
     // --------------------------------------
     // IMPORTANT
@@ -444,14 +297,11 @@ const createBooking = async (
     // --------------------------------------
 
     const adminBooking = {
-      name:
-        name.trim(),
+      name: name.trim(),
 
-      email:
-        email.trim().toLowerCase(),
+      email: email.trim().toLowerCase(),
 
-      phone:
-        phone.trim(),
+      phone: phone.trim(),
 
       date,
 
@@ -461,14 +311,11 @@ const createBooking = async (
 
       location,
 
-      info:
-        info?.trim() || "",
+      info: info?.trim() || "",
 
-      status:
-        "pending",
+      status: "pending",
 
-      source:
-        "admin",
+      source: "admin",
 
       counselorId,
 
@@ -479,11 +326,9 @@ const createBooking = async (
       counselorPhone:
         counselorPhone || null,
 
-      calendarEventId:
-        null,
+      calendarEventId: null,
 
-      googleMeetLink:
-        null,
+      googleMeetLink: null,
 
       createdBy:
         createdBy || "Admin",
@@ -533,14 +378,6 @@ const createBooking = async (
         calendarError
       );
 
-      /*
-       * Do not leave the appointment looking
-       * approved if Calendar creation failed.
-       *
-       * The booking remains pending so the
-       * admin can see that it needs attention.
-       */
-
       throw new Error(
         calendarError?.message ||
           "Failed to create the Google Calendar appointment. The appointment was not approved."
@@ -552,17 +389,15 @@ const createBooking = async (
     // --------------------------------------
 
     try {
-      await firestoreService.approveBooking(
-        {
-          bookingId,
+      await firestoreService.approveBooking({
+        bookingId,
 
-          counselorId,
+        counselorId,
 
-          counselorName,
+        counselorName,
 
-          counselorEmail,
-        }
-      );
+        counselorEmail,
+      });
 
       // ------------------------------------
       // Save Calendar details
@@ -628,14 +463,6 @@ const createBooking = async (
         notifications
       );
     } catch (notificationError) {
-      /*
-       * The appointment is already approved and
-       * the Calendar event exists.
-       *
-       * Do NOT roll the appointment back just
-       * because an email failed.
-       */
-
       console.error(
         "⚠️ Admin appointment was approved, but notification sending failed:",
         notificationError
@@ -656,11 +483,9 @@ const createBooking = async (
     );
 
     return {
-      booking:
-        finalBooking,
+      booking: finalBooking,
 
-      calendar:
-        calendarResult,
+      calendar: calendarResult,
 
       notifications,
     };
@@ -670,23 +495,12 @@ const createBooking = async (
   // WEBSITE BOOKING
   // ==================================================
 
-  /*
-   * Website bookings remain pending.
-   *
-   * No counselor is assigned.
-   * No Google Calendar event is created.
-   * No Google Meet is created.
-   */
-
   const booking = {
-    name:
-      name.trim(),
+    name: name.trim(),
 
-    email:
-      email.trim().toLowerCase(),
+    email: email.trim().toLowerCase(),
 
-    phone:
-      phone.trim(),
+    phone: phone.trim(),
 
     date,
 
@@ -696,32 +510,23 @@ const createBooking = async (
 
     location,
 
-    info:
-      info?.trim() || "",
+    info: info?.trim() || "",
 
-    status:
-      "pending",
+    status: "pending",
 
-    source:
-      "website",
+    source: "website",
 
-    counselorId:
-      null,
+    counselorId: null,
 
-    counselorName:
-      null,
+    counselorName: null,
 
-    counselorEmail:
-      null,
+    counselorEmail: null,
 
-    counselorPhone:
-      null,
+    counselorPhone: null,
 
-    calendarEventId:
-      null,
+    calendarEventId: null,
 
-    googleMeetLink:
-      null,
+    googleMeetLink: null,
   };
 
   // --------------------------------------
@@ -750,12 +555,6 @@ const createBooking = async (
         savedBooking
       );
   } catch (notificationError) {
-    /*
-     * Booking creation should not be lost
-     * simply because notification delivery
-     * failed.
-     */
-
     console.error(
       "⚠️ Website booking created, but initial notification sending failed:",
       notificationError
@@ -770,11 +569,9 @@ const createBooking = async (
     await firestoreService.updateNotificationStatus(
       bookingId,
       {
-        clientApprovalEmail:
-          false,
+        clientApprovalEmail: false,
 
-        counselorEmail:
-          false,
+        counselorEmail: false,
       }
     );
   } catch (notificationStatusError) {
@@ -877,27 +674,11 @@ const approveBooking = async ({
   // Check blocker availability
   // --------------------------------------
 
-  await checkCounselorAvailability(
-    {
-      counselorId,
-      date: booking.date,
-      time: booking.time,
-    }
-  );
-
-  // --------------------------------------
-  // Check approved appointment conflict
-  // --------------------------------------
-
-  await checkAppointmentConflict(
-    {
-      counselorId,
-      date: booking.date,
-      time: booking.time,
-      excludeBookingId:
-        bookingId,
-    }
-  );
+  await checkCounselorAvailability({
+    counselorId,
+    date: booking.date,
+    time: booking.time,
+  });
 
   // --------------------------------------
   // Prepare approved booking
@@ -912,8 +693,7 @@ const approveBooking = async ({
 
     counselorEmail,
 
-    status:
-      "approved",
+    status: "approved",
   };
 
   // --------------------------------------
@@ -947,17 +727,15 @@ const approveBooking = async ({
 
   try {
     approvedBooking =
-      await firestoreService.approveBooking(
-        {
-          bookingId,
+      await firestoreService.approveBooking({
+        bookingId,
 
-          counselorId,
+        counselorId,
 
-          counselorName,
+        counselorName,
 
-          counselorEmail,
-        }
-      );
+        counselorEmail,
+      });
 
     // ------------------------------------
     // Save Calendar details
@@ -1032,11 +810,9 @@ const approveBooking = async ({
   );
 
   return {
-    booking:
-      finalBooking,
+    booking: finalBooking,
 
-    calendar:
-      calendarResult,
+    calendar: calendarResult,
 
     notifications,
   };
@@ -1082,17 +858,15 @@ const rejectBooking = async ({
   }
 
   const rejectedBooking =
-    await firestoreService.rejectBooking(
-      {
-        bookingId,
+    await firestoreService.rejectBooking({
+      bookingId,
 
-        counselorId,
+      counselorId,
 
-        counselorName,
+      counselorName,
 
-        counselorEmail,
-      }
-    );
+      counselorEmail,
+    });
 
   // --------------------------------------
   // Send rejection notifications
@@ -1126,8 +900,7 @@ const rejectBooking = async ({
   );
 
   return {
-    booking:
-      finalBooking,
+    booking: finalBooking,
 
     notifications,
   };
@@ -1137,9 +910,7 @@ const rejectBooking = async ({
 // CANCEL BOOKING
 // ----------------------------------------
 
-const cancelBooking = async (
-  bookingId
-) => {
+const cancelBooking = async (bookingId) => {
   if (!bookingId) {
     throw new Error(
       "Booking ID is required."
@@ -1203,11 +974,9 @@ const cancelBooking = async (
   );
 
   return {
-    booking:
-      cancelledBooking,
+    booking: cancelledBooking,
 
-    calendar:
-      calendarResult,
+    calendar: calendarResult,
 
     notifications: {},
   };
