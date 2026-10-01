@@ -89,7 +89,10 @@ const isCounselorAvailable = async ({
     !startTime ||
     !endTime
   ) {
-    return false;
+    return {
+      available: false,
+      reason: "Missing counselor, date, or time.",
+    };
   }
 
   if (
@@ -97,7 +100,10 @@ const isCounselorAvailable = async ({
     !isValidTime(startTime) ||
     !isValidTime(endTime)
   ) {
-    return false;
+    return {
+      available: false,
+      reason: "Invalid appointment date or time.",
+    };
   }
 
   const requestedStart =
@@ -107,12 +113,21 @@ const isCounselorAvailable = async ({
     timeToMinutes(endTime);
 
   if (requestedEnd <= requestedStart) {
-    return false;
+    return {
+      available: false,
+      reason:
+        "Appointment end time must be later than the start time.",
+    };
   }
 
-  // ----------------------------------------
-  // GET BLOCKERS FOR COUNSELOR + DATE
-  // ----------------------------------------
+  console.log("🔍 Checking counselor availability:", {
+    counselorId,
+    date,
+    startTime,
+    endTime,
+    requestedStart,
+    requestedEnd,
+  });
 
   const snapshot = await db
     .collection(BLOCKERS_COLLECTION)
@@ -128,13 +143,23 @@ const isCounselorAvailable = async ({
     )
     .get();
 
-  // ----------------------------------------
-  // CHECK FOR OVERLAPPING BLOCKER
-  // ----------------------------------------
+  console.log(
+    `🔍 Found ${snapshot.docs.length} blocker(s).`
+  );
 
   const overlappingBlocker =
     snapshot.docs.find((doc) => {
       const blocker = doc.data();
+
+      console.log("🔍 Checking blocker:", {
+        id: doc.id,
+        counselorId: blocker.counselorId,
+        date: blocker.date,
+        startTime: blocker.startTime,
+        endTime: blocker.endTime,
+        status: blocker.status,
+        reason: blocker.reason,
+      });
 
       // Ignore deleted blockers
       if (blocker.status === "deleted") {
@@ -144,6 +169,13 @@ const isCounselorAvailable = async ({
       if (
         !blocker.startTime ||
         !blocker.endTime
+      ) {
+        return false;
+      }
+
+      if (
+        !isValidTime(blocker.startTime) ||
+        !isValidTime(blocker.endTime)
       ) {
         return false;
       }
@@ -158,14 +190,54 @@ const isCounselorAvailable = async ({
           blocker.endTime
         );
 
-      return (
+      const overlaps =
         requestedStart < blockerEnd &&
-        requestedEnd > blockerStart
-      );
+        requestedEnd > blockerStart;
+
+      console.log("🔍 Overlap:", {
+        blockerStart,
+        blockerEnd,
+        requestedStart,
+        requestedEnd,
+        overlaps,
+      });
+
+      return overlaps;
     });
 
-  // No blocker = counselor is available
-  return !overlappingBlocker;
+  if (overlappingBlocker) {
+    const blocker =
+      overlappingBlocker.data();
+
+    console.log(
+      "❌ Counselor unavailable because of blocker:",
+      {
+        blockerId: overlappingBlocker.id,
+        counselorId: blocker.counselorId,
+        date: blocker.date,
+        startTime: blocker.startTime,
+        endTime: blocker.endTime,
+        reason: blocker.reason,
+      }
+    );
+
+    return {
+      available: false,
+      reason:
+        `Counselor is unavailable from ${blocker.startTime} to ${blocker.endTime}.` +
+        (blocker.reason
+          ? ` Reason: ${blocker.reason}`
+          : ""),
+    };
+  }
+
+  console.log(
+    "✅ Counselor is available."
+  );
+
+  return {
+    available: true,
+  };
 };
 
 // ========================================
