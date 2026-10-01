@@ -674,11 +674,11 @@ const approveBooking = async ({
   // Check blocker availability
   // --------------------------------------
 
-  await checkCounselorAvailability({
-    counselorId,
-    date: booking.date,
-    time: booking.time,
-  });
+  // await checkCounselorAvailability({
+  //   counselorId,
+  //   date: booking.date,
+  //   time: booking.time,
+  // });
 
   // --------------------------------------
   // Prepare approved booking
