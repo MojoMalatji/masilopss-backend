@@ -27,13 +27,21 @@ jobs:
         env:
           NODE_ENV: production
 
+          # Firebase
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+
+          # WhatsApp
           WHATSAPP_API_VERSION: ${{ secrets.WHATSAPP_API_VERSION }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
 
+          # WhatsApp Templates
           WHATSAPP_TEMPLATE_LANGUAGE: ${{ secrets.WHATSAPP_TEMPLATE_LANGUAGE }}
           WHATSAPP_TEMPLATE_30MIN: ${{ secrets.WHATSAPP_TEMPLATE_30MIN }}
           WHATSAPP_TEMPLATE_10MIN: ${{ secrets.WHATSAPP_TEMPLATE_10MIN }}
 
+          # Recipient numbers
           WHATSAPP_PRIDE_PHONE: ${{ secrets.WHATSAPP_PRIDE_PHONE }}
           WHATSAPP_MFANELO_PHONE: ${{ secrets.WHATSAPP_MFANELO_PHONE }}
