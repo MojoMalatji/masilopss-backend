@@ -31,8 +31,7 @@ const sendBookingNotifications = async (booking) => {
     await sendEmail({
       to: booking.email,
 
-      subject:
-        "Booking Confirmation - Mashilo Psyché & Social Solutions",
+      subject: "Booking Confirmation - Mashilo Psyché & Social Solutions",
 
       html: clientTemplate(booking),
 
@@ -41,14 +40,9 @@ const sendBookingNotifications = async (booking) => {
 
     results.clientEmail = true;
 
-    console.log(
-      `✅ Booking confirmation sent to ${booking.email}`
-    );
+    console.log(`✅ Booking confirmation sent to ${booking.email}`);
   } catch (error) {
-    console.error(
-      "❌ Client booking email failed:",
-      error.message
-    );
+    console.error("❌ Client booking email failed:", error.message);
   }
 
   /*
@@ -67,14 +61,9 @@ const sendBookingNotifications = async (booking) => {
 
     results.ownerEmail = true;
 
-    console.log(
-      `✅ Owner notification sent to ${process.env.OWNER_EMAIL}`
-    );
+    console.log(`✅ Owner notification sent to ${process.env.OWNER_EMAIL}`);
   } catch (error) {
-    console.error(
-      "❌ Owner notification failed:",
-      error.message
-    );
+    console.error("❌ Owner notification failed:", error.message);
   }
 
   return results;
@@ -99,16 +88,13 @@ const sendApprovalNotifications = async (booking) => {
    */
   try {
     if (!booking.email) {
-      throw new Error(
-        "Client email is missing."
-      );
+      throw new Error("Client email is missing.");
     }
 
     await sendEmail({
       to: booking.email,
 
-      subject:
-        "Appointment Approved - Mashilo Psyché & Social Solutions",
+      subject: "Appointment Approved - Mashilo Psyché & Social Solutions",
 
       html: clientApprovalTemplate(booking),
 
@@ -117,14 +103,9 @@ const sendApprovalNotifications = async (booking) => {
 
     results.clientApprovalEmail = true;
 
-    console.log(
-      `✅ Approval email sent to client: ${booking.email}`
-    );
+    console.log(`✅ Approval email sent to client: ${booking.email}`);
   } catch (error) {
-    console.error(
-      "❌ Client approval email failed:",
-      error.message
-    );
+    console.error("❌ Client approval email failed:", error.message);
   }
 
   /*
@@ -132,20 +113,15 @@ const sendApprovalNotifications = async (booking) => {
    */
   try {
     if (!booking.counselorEmail) {
-      throw new Error(
-        "Counselor email is missing."
-      );
+      throw new Error("Counselor email is missing.");
     }
 
     await sendEmail({
       to: booking.counselorEmail,
 
-      subject:
-        `Appointment Assigned - ${booking.date} at ${booking.time}`,
+      subject: `Appointment Assigned - ${booking.date} at ${booking.time}`,
 
-      html: counselorAppointmentTemplate(
-        booking
-      ),
+      html: counselorAppointmentTemplate(booking),
 
       replyTo: process.env.OWNER_EMAIL,
     });
@@ -153,13 +129,10 @@ const sendApprovalNotifications = async (booking) => {
     results.counselorEmail = true;
 
     console.log(
-      `✅ Appointment email sent to counselor: ${booking.counselorEmail}`
+      `✅ Appointment email sent to counselor: ${booking.counselorEmail}`,
     );
   } catch (error) {
-    console.error(
-      "❌ Counselor appointment email failed:",
-      error.message
-    );
+    console.error("❌ Counselor appointment email failed:", error.message);
   }
 
   return results;
@@ -185,9 +158,7 @@ const sendApprovalNotifications = async (booking) => {
  * Counselor:
  * "Appointment Scheduled"
  */
-const sendAdminAppointmentNotifications = async (
-  booking
-) => {
+const sendAdminAppointmentNotifications = async (booking) => {
   const results = {
     clientEmail: false,
     counselorEmail: false,
@@ -200,16 +171,13 @@ const sendAdminAppointmentNotifications = async (
    */
   try {
     if (!booking.email) {
-      throw new Error(
-        "Client email is missing."
-      );
+      throw new Error("Client email is missing.");
     }
 
     await sendEmail({
       to: booking.email,
 
-      subject:
-        "Appointment Scheduled - Mashilo Psyché & Social Solutions",
+      subject: "Appointment Scheduled - Mashilo Psyché & Social Solutions",
 
       html: adminAppointmentClient(booking),
 
@@ -218,14 +186,9 @@ const sendAdminAppointmentNotifications = async (
 
     results.clientEmail = true;
 
-    console.log(
-      `✅ Admin appointment email sent to client: ${booking.email}`
-    );
+    console.log(`✅ Admin appointment email sent to client: ${booking.email}`);
   } catch (error) {
-    console.error(
-      "❌ Admin appointment client email failed:",
-      error.message
-    );
+    console.error("❌ Admin appointment client email failed:", error.message);
   }
 
   /*
@@ -235,20 +198,15 @@ const sendAdminAppointmentNotifications = async (
    */
   try {
     if (!booking.counselorEmail) {
-      throw new Error(
-        "Counselor email is missing."
-      );
+      throw new Error("Counselor email is missing.");
     }
 
     await sendEmail({
       to: booking.counselorEmail,
 
-      subject:
-        `Appointment Scheduled - ${booking.date} at ${booking.time}`,
+      subject: `Appointment Scheduled - ${booking.date} at ${booking.time}`,
 
-      html: adminAppointmentCounselor(
-        booking
-      ),
+      html: adminAppointmentCounselor(booking),
 
       replyTo: process.env.OWNER_EMAIL,
     });
@@ -256,12 +214,12 @@ const sendAdminAppointmentNotifications = async (
     results.counselorEmail = true;
 
     console.log(
-      `✅ Admin appointment email sent to counselor: ${booking.counselorEmail}`
+      `✅ Admin appointment email sent to counselor: ${booking.counselorEmail}`,
     );
   } catch (error) {
     console.error(
       "❌ Admin appointment counselor email failed:",
-      error.message
+      error.message,
     );
   }
 
@@ -273,9 +231,7 @@ const sendAdminAppointmentNotifications = async (
  * REJECTION NOTIFICATIONS
  * ========================================
  */
-const sendRejectionNotifications = async (
-  booking
-) => {
+const sendRejectionNotifications = async (booking) => {
   const results = {
     clientRejectionEmail: false,
     counselorRejectionEmail: false,
@@ -288,16 +244,13 @@ const sendRejectionNotifications = async (
    */
   try {
     if (!booking.email) {
-      throw new Error(
-        "Client email is missing."
-      );
+      throw new Error("Client email is missing.");
     }
 
     await sendEmail({
       to: booking.email,
 
-      subject:
-        "Appointment Request Update - Mashilo Psyché & Social Solutions",
+      subject: "Appointment Request Update - Mashilo Psyché & Social Solutions",
 
       html: clientRejectionTemplate(booking),
 
@@ -306,14 +259,9 @@ const sendRejectionNotifications = async (
 
     results.clientRejectionEmail = true;
 
-    console.log(
-      `✅ Rejection email sent to client: ${booking.email}`
-    );
+    console.log(`✅ Rejection email sent to client: ${booking.email}`);
   } catch (error) {
-    console.error(
-      "❌ Client rejection email failed:",
-      error.message
-    );
+    console.error("❌ Client rejection email failed:", error.message);
   }
 
   /*
@@ -327,7 +275,7 @@ const sendRejectionNotifications = async (
   try {
     if (!booking.counselorEmail) {
       console.log(
-        "ℹ️ No counselor email assigned. Skipping counselor rejection email."
+        "ℹ️ No counselor email assigned. Skipping counselor rejection email.",
       );
 
       return results;
@@ -336,12 +284,9 @@ const sendRejectionNotifications = async (
     await sendEmail({
       to: booking.counselorEmail,
 
-      subject:
-        `Appointment Request Rejected - ${booking.date} at ${booking.time}`,
+      subject: `Appointment Request Rejected - ${booking.date} at ${booking.time}`,
 
-      html: counselorRejectionTemplate(
-        booking
-      ),
+      html: counselorRejectionTemplate(booking),
 
       replyTo: process.env.OWNER_EMAIL,
     });
@@ -349,13 +294,10 @@ const sendRejectionNotifications = async (
     results.counselorRejectionEmail = true;
 
     console.log(
-      `✅ Rejection email sent to counselor: ${booking.counselorEmail}`
+      `✅ Rejection email sent to counselor: ${booking.counselorEmail}`,
     );
   } catch (error) {
-    console.error(
-      "❌ Counselor rejection email failed:",
-      error.message
-    );
+    console.error("❌ Counselor rejection email failed:", error.message);
   }
 
   return results;

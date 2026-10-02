@@ -1,6 +1,40 @@
+// services/firestoreService.js
+
 const db = require("../config/firebase");
 
 const BOOKINGS_COLLECTION = "bookings";
+
+/**
+ * ========================================
+ * WHATSAPP REMINDER DEFAULTS
+ * ========================================
+ *
+ * These fields allow the backend to track
+ * the two WhatsApp reminders independently.
+ *
+ * The actual sending will be handled by the
+ * WhatsApp reminder service later.
+ */
+
+const createWhatsAppReminderTracking = () => {
+  return {
+    thirtyMinute: {
+      scheduledFor: null,
+      sent: false,
+      sentAt: null,
+      attempts: 0,
+      lastError: null,
+    },
+
+    tenMinute: {
+      scheduledFor: null,
+      sent: false,
+      sentAt: null,
+      attempts: 0,
+      lastError: null,
+    },
+  };
+};
 
 /**
  * ========================================
@@ -26,6 +60,12 @@ const saveBooking = async (booking) => {
 
       time:
         booking.time || "",
+
+      /*
+       * Appointment end time
+       */
+      endTime:
+        booking.endTime || "",
 
       service:
         booking.service || "",
@@ -83,6 +123,18 @@ const saveBooking = async (booking) => {
 
       counselorRejectionEmailSent:
         false,
+
+      /*
+       * WhatsApp reminder tracking
+       *
+       * These reminders are for the counselor.
+       *
+       * 30-minute reminder
+       * 10-minute reminder
+       */
+      whatsappReminders:
+        booking.whatsappReminders ||
+        createWhatsAppReminderTracking(),
 
       /*
        * Booking source
@@ -548,6 +600,143 @@ const updateCalendarDetails =
 
 /**
  * ========================================
+ * UPDATE WHATSAPP REMINDER
+ * ========================================
+ *
+ * This function will be used later by the
+ * WhatsApp reminder service.
+ *
+ * It allows us to update either:
+ *
+ * - thirtyMinute
+ * - tenMinute
+ *
+ * without overwriting the other reminder.
+ */
+const updateWhatsAppReminder =
+  async (
+    bookingId,
+    reminderType,
+    reminderData
+  ) => {
+    try {
+      if (
+        ![
+          "thirtyMinute",
+          "tenMinute",
+        ].includes(reminderType)
+      ) {
+        throw new Error(
+          "Invalid WhatsApp reminder type."
+        );
+      }
+
+      const bookingRef =
+        db
+          .collection(
+            BOOKINGS_COLLECTION
+          )
+          .doc(bookingId);
+
+      const bookingSnapshot =
+        await bookingRef.get();
+
+      if (!bookingSnapshot.exists) {
+        throw new Error(
+          "Booking not found."
+        );
+      }
+
+      const currentBooking =
+        bookingSnapshot.data();
+
+      const currentReminders =
+        currentBooking.whatsappReminders ||
+        createWhatsAppReminderTracking();
+
+      const currentReminder =
+        currentReminders[
+          reminderType
+        ] || {};
+
+      const updatedReminder = {
+        ...currentReminder,
+        ...reminderData,
+      };
+
+      await bookingRef.update({
+        [`whatsappReminders.${reminderType}`]:
+          updatedReminder,
+
+        updatedAt:
+          new Date(),
+      });
+
+      console.log(
+        `✅ WhatsApp ${reminderType} reminder updated: ${bookingId}`
+      );
+
+      return getBookingById(
+        bookingId
+      );
+    } catch (error) {
+      console.error(
+        "❌ updateWhatsAppReminder error:",
+        error
+      );
+
+      throw error;
+    }
+  };
+
+/**
+ * ========================================
+ * GET DUE WHATSAPP REMINDERS
+ * ========================================
+ *
+ * This will be used by the persistent
+ * WhatsApp reminder processor later.
+ *
+ * It returns approved appointments that
+ * contain an unsent WhatsApp reminder.
+ *
+ * We intentionally retrieve approved
+ * bookings and perform the exact date/time
+ * comparison in the reminder service.
+ */
+const getApprovedBookings =
+  async () => {
+    try {
+      const snapshot =
+        await db
+          .collection(
+            BOOKINGS_COLLECTION
+          )
+          .where(
+            "status",
+            "==",
+            "approved"
+          )
+          .get();
+
+      return snapshot.docs.map(
+        (doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })
+      );
+    } catch (error) {
+      console.error(
+        "❌ getApprovedBookings error:",
+        error
+      );
+
+      throw error;
+    }
+  };
+
+/**
+ * ========================================
  * EXPORTS
  * ========================================
  */
@@ -560,4 +749,6 @@ module.exports = {
   cancelBooking,
   updateNotificationStatus,
   updateCalendarDetails,
+  updateWhatsAppReminder,
+  getApprovedBookings,
 };
