@@ -73,10 +73,17 @@ app.use("/", googleAuthRoutes);
 app.use(errorHandler);
 
 // ========================================
+// WHATSAPP REMINDER SCHEDULER
+// ========================================
+
+require("./whatsappReminderRunner");
+
+// ========================================
 // START SERVER
 // ========================================
 
 const PORT = process.env.PORT || 5000;
+
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(

@@ -6,38 +6,47 @@ const {
   processDueWhatsAppReminders,
 } = require("./services/whatsappReminderService");
 
+const CHECK_INTERVAL_MS = 60 * 1000; // Check every 1 minute
+
+let isRunning = false;
+
 const run = async () => {
-  console.log("========================================");
-  console.log("📲 WhatsApp Reminder Scheduler Started");
-  console.log(`🕐 Server time: ${new Date().toISOString()}`);
-  console.log("========================================");
+  if (isRunning) {
+    console.log(
+      "⏳ WhatsApp reminder check already running. Skipping this cycle."
+    );
+    return;
+  }
+
+  isRunning = true;
 
   try {
-    const result =
-      await processDueWhatsAppReminders();
-
     console.log("========================================");
-    console.log("✅ WhatsApp Reminder Scheduler Completed");
+    console.log("📲 WhatsApp Reminder Scheduler Started");
     console.log(
-      `📋 Bookings checked: ${result?.totalBookings || 0}`
+      `🕐 Running reminder check at: ${new Date().toISOString()}`
     );
-    console.log(
-      `📤 Reminders sent: ${result?.sentCount || 0}`
-    );
-    console.log(
-      `❌ Reminders failed: ${result?.failedCount || 0}`
-    );
-    console.log("========================================");
 
-    process.exit(0);
+    await processDueWhatsAppReminders();
+
+    console.log("✅ WhatsApp reminder check finished.");
+    console.log("========================================");
   } catch (error) {
-    console.error("========================================");
-    console.error("❌ WhatsApp Reminder Scheduler Failed");
-    console.error(error);
-    console.error("========================================");
-
-    process.exit(1);
+    console.error(
+      "❌ WhatsApp reminder scheduler error:",
+      error
+    );
+  } finally {
+    isRunning = false;
   }
 };
 
+// Run immediately when the backend starts
 run();
+
+// Continue checking every minute
+setInterval(run, CHECK_INTERVAL_MS);
+
+module.exports = {
+  run,
+};
