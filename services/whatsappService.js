@@ -35,8 +35,6 @@ const createWhatsAppUrl = () => {
 
 /**
  * Send a normal WhatsApp text message.
- *
- * Kept for existing functionality.
  */
 const sendWhatsAppMessage = async ({
   to,
@@ -56,46 +54,58 @@ const sendWhatsAppMessage = async ({
     );
   }
 
-  const response = await axios.post(
-    createWhatsAppUrl(),
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "text",
-      text: {
-        preview_url: false,
-        body: message,
+  try {
+    const response = await axios.post(
+      createWhatsAppUrl(),
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: {
+          preview_url: false,
+          body: message,
+        },
       },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error(
+      "❌ WhatsApp text message API error"
+    );
+
+    console.error(
+      "HTTP Status:",
+      error?.response?.status || "Unknown"
+    );
+
+    console.error(
+      "Meta Response:",
+      JSON.stringify(
+        error?.response?.data || {},
+        null,
+        2
+      )
+    );
+
+    console.error(
+      "Axios Error:",
+      error?.message || "Unknown error"
+    );
+
+    throw error;
+  }
 };
 
 /**
- * Send an approved WhatsApp message template.
- *
- * Example:
- *
- * templateName:
- * appointment_reminder_30min
- *
- * variables:
- * [
- *   "Pride Mashilo",
- *   "John Doe",
- *   "2 October 2026",
- *   "15:30",
- *   "Counseling",
- *   "Pretoria"
- * ]
+ * Send an approved WhatsApp template.
  */
 const sendWhatsAppTemplateMessage = async ({
   to,
@@ -124,35 +134,111 @@ const sendWhatsAppTemplateMessage = async ({
     })
   );
 
-  const response = await axios.post(
-    createWhatsAppUrl(),
-    {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "template",
-      template: {
-        name: templateName,
-        language: {
-          code: languageCode,
+  const requestBody = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: {
+        code: languageCode,
+      },
+      components: [
+        {
+          type: "body",
+          parameters,
         },
-        components: [
-          {
-            type: "body",
-            parameters,
-          },
-        ],
-      },
+      ],
     },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
+  };
+
+  console.log(
+    "📤 Sending WhatsApp template..."
   );
 
-  return response.data;
+  console.log(
+    `📱 Recipient: ${to}`
+  );
+
+  console.log(
+    `📄 Template: ${templateName}`
+  );
+
+  console.log(
+    `🌍 Language: ${languageCode}`
+  );
+
+  console.log(
+    `🔢 Parameters: ${parameters.length}`
+  );
+
+  try {
+    const response = await axios.post(
+      createWhatsAppUrl(),
+      requestBody,
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(
+      "✅ WhatsApp API request successful"
+    );
+
+    console.log(
+      "📨 Meta Response:",
+      JSON.stringify(
+        response.data,
+        null,
+        2
+      )
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "========================================"
+    );
+
+    console.error(
+      "❌ META WHATSAPP API ERROR"
+    );
+
+    console.error(
+      "========================================"
+    );
+
+    console.error(
+      "HTTP Status:",
+      error?.response?.status ||
+        "Unknown"
+    );
+
+    console.error(
+      "Meta Response:",
+      JSON.stringify(
+        error?.response?.data || {},
+        null,
+        2
+      )
+    );
+
+    console.error(
+      "Error Message:",
+      error?.message ||
+        "Unknown error"
+    );
+
+    console.error(
+      "========================================"
+    );
+
+    throw error;
+  }
 };
 
 module.exports = {
