@@ -16,9 +16,6 @@ const TIME_ZONE = "Africa/Johannesburg";
 
 /**
  * Meta WhatsApp template names.
- *
- * These MUST match the template names
- * created in Meta exactly.
  */
 const WHATSAPP_TEMPLATES = {
   thirtyMinute:
@@ -32,9 +29,6 @@ const WHATSAPP_TEMPLATES = {
 
 /**
  * Counselor WhatsApp numbers.
- *
- * These should be stored in Render
- * environment variables.
  */
 const COUNSELOR_WHATSAPP_NUMBERS = {
   "pride-mashilo":
@@ -46,14 +40,10 @@ const COUNSELOR_WHATSAPP_NUMBERS = {
 
 /**
  * ========================================
- * HELPERS
+ * CREATE APPOINTMENT DATE/TIME
  * ========================================
  */
 
-/**
- * Convert appointment date/time in
- * South African time into a UTC Date.
- */
 const createAppointmentDateTime = (
   date,
   time
@@ -160,9 +150,7 @@ const formatAppointmentTime = (
         minute: "2-digit",
         hour12: false,
       }
-    ).format(
-      appointmentDateTime
-    );
+    ).format(appointmentDateTime);
   } catch (error) {
     return time || "";
   }
@@ -201,14 +189,12 @@ const getTemplateName = (
  * BUILD TEMPLATE VARIABLES
  * ========================================
  *
- * These correspond to the Meta template:
- *
- * {{1}} = Counselor name
- * {{2}} = Client name
- * {{3}} = Appointment date
- * {{4}} = Appointment time
- * {{5}} = Service
- * {{6}} = Location
+ * {{1}} Counselor name
+ * {{2}} Client name
+ * {{3}} Appointment date
+ * {{4}} Appointment time
+ * {{5}} Service
+ * {{6}} Location
  */
 
 const buildTemplateVariables = (
@@ -364,6 +350,9 @@ const processReminder = async ({
 
     return {
       processed: false,
+      failed: true,
+      bookingId: booking.id,
+      reminderType,
       reason: error.message,
     };
   }
@@ -380,6 +369,8 @@ const processReminder = async ({
       appointmentDateTime
     );
 
+  const now = new Date();
+
   /**
    * Get current Firestore
    * reminder state.
@@ -393,8 +384,26 @@ const processReminder = async ({
     {};
 
   /**
-   * Never send the same reminder
-   * twice.
+   * Debug information.
+   */
+  console.log(
+    `🕐 Current UTC time: ${now.toISOString()}`
+  );
+
+  console.log(
+    `📅 Appointment UTC time: ${appointmentDateTime.toISOString()}`
+  );
+
+  console.log(
+    `⏰ ${minutesBefore}-minute reminder due at: ${scheduledFor.toISOString()}`
+  );
+
+  console.log(
+    `📊 Reminder already sent: ${reminder.sent === true}`
+  );
+
+  /**
+   * Never send the same reminder twice.
    */
   if (reminder.sent === true) {
     return {
@@ -408,9 +417,7 @@ const processReminder = async ({
   /**
    * Save scheduled time.
    */
-  if (
-    !reminder.scheduledFor
-  ) {
+  if (!reminder.scheduledFor) {
     try {
       await firestoreService.updateWhatsAppReminder(
         booking.id,
@@ -432,8 +439,6 @@ const processReminder = async ({
     }
   }
 
-  const now = new Date();
-
   /**
    * Not due yet.
    */
@@ -441,6 +446,10 @@ const processReminder = async ({
     now.getTime() <
     scheduledFor.getTime()
   ) {
+    console.log(
+      `⏳ ${reminderType} reminder is NOT due yet.`
+    );
+
     return {
       processed: false,
       notDue: true,
@@ -458,6 +467,10 @@ const processReminder = async ({
     now.getTime() >=
     appointmentDateTime.getTime()
   ) {
+    console.log(
+      `⌛ Appointment has already started.`
+    );
+
     return {
       processed: false,
       expired: true,
@@ -512,7 +525,7 @@ const processReminder = async ({
   }
 
   /**
-   * Get the Meta template name.
+   * Get template name.
    */
   const templateName =
     getTemplateName(
@@ -520,7 +533,7 @@ const processReminder = async ({
     );
 
   /**
-   * Build the six template variables.
+   * Build template variables.
    */
   const variables =
     buildTemplateVariables(
@@ -528,11 +541,15 @@ const processReminder = async ({
     );
 
   console.log(
-    `📲 Sending ${minutesBefore}-minute WhatsApp template reminder...`
+    "========================================"
   );
 
   console.log(
-    `Booking: ${booking.id}`
+    `📲 Sending ${minutesBefore}-minute WhatsApp reminder`
+  );
+
+  console.log(
+    `Booking ID: ${booking.id}`
   );
 
   console.log(
@@ -540,7 +557,32 @@ const processReminder = async ({
   );
 
   console.log(
+    `Counselor ID: ${booking.counselorId}`
+  );
+
+  console.log(
+    `WhatsApp number: ${counselorPhone}`
+  );
+
+  console.log(
     `Template: ${templateName}`
+  );
+
+  console.log(
+    `Language: ${
+      process.env.WHATSAPP_TEMPLATE_LANGUAGE ||
+      "en_US"
+    }`
+  );
+
+  console.log(
+    `Variables: ${JSON.stringify(
+      variables
+    )}`
+  );
+
+  console.log(
+    "========================================"
   );
 
   /**
@@ -557,6 +599,17 @@ const processReminder = async ({
           variables,
         }
       );
+
+    console.log(
+      "✅ Meta WhatsApp API response received."
+    );
+
+    console.log(
+      `📨 Message ID: ${
+        response?.messages?.[0]?.id ||
+        "not returned"
+      }`
+    );
 
     /**
      * Mark reminder as sent.
@@ -607,11 +660,22 @@ const processReminder = async ({
       errorMessage
     );
 
+    if (
+      error?.response?.data
+        ?.error
+    ) {
+      console.error(
+        "Meta API error:",
+        JSON.stringify(
+          error.response.data.error,
+          null,
+          2
+        )
+      );
+    }
+
     /**
      * Record failed attempt.
-     *
-     * sent remains false so the
-     * scheduler can retry later.
      */
     try {
       await firestoreService.updateWhatsAppReminder(
@@ -668,6 +732,54 @@ const processDueWhatsAppReminders =
     const results = [];
 
     for (const booking of bookings) {
+      console.log(
+        "========================================"
+      );
+
+      console.log(
+        `📌 Checking booking: ${booking.id}`
+      );
+
+      console.log(
+        `👤 Client: ${booking.name || "Unknown"}`
+      );
+
+      console.log(
+        `📅 Date: ${booking.date || "Missing"}`
+      );
+
+      console.log(
+        `🕐 Time: ${booking.time || "Missing"}`
+      );
+
+      console.log(
+        `📊 Status: ${booking.status || "Missing"}`
+      );
+
+      console.log(
+        `👨‍⚕️ Counselor: ${
+          booking.counselorName ||
+          "Missing"
+        }`
+      );
+
+      console.log(
+        `🆔 Counselor ID: ${
+          booking.counselorId ||
+          "Missing"
+        }`
+      );
+
+      console.log(
+        `📱 WhatsApp number: ${
+          getCounselorWhatsAppNumber(
+            booking
+          )
+            ? "CONFIGURED"
+            : "MISSING"
+        }`
+      );
+
       /**
        * 30-minute reminder.
        */
@@ -695,6 +807,22 @@ const processDueWhatsAppReminders =
       results.push(
         tenMinuteResult
       );
+
+      console.log(
+        `30-minute result: ${JSON.stringify(
+          thirtyMinuteResult
+        )}`
+      );
+
+      console.log(
+        `10-minute result: ${JSON.stringify(
+          tenMinuteResult
+        )}`
+      );
+
+      console.log(
+        "========================================"
+      );
     }
 
     const sentCount =
@@ -709,8 +837,58 @@ const processDueWhatsAppReminders =
           result.failed === true
       ).length;
 
+    const notDueCount =
+      results.filter(
+        (result) =>
+          result.notDue === true
+      ).length;
+
+    const expiredCount =
+      results.filter(
+        (result) =>
+          result.expired === true
+      ).length;
+
+    const alreadySentCount =
+      results.filter(
+        (result) =>
+          result.alreadySent === true
+      ).length;
+
     console.log(
-      `📲 WhatsApp reminder check complete. Sent: ${sentCount}, Failed: ${failedCount}`
+      "========================================"
+    );
+
+    console.log(
+      "📲 WhatsApp reminder check complete."
+    );
+
+    console.log(
+      `📋 Bookings checked: ${bookings.length}`
+    );
+
+    console.log(
+      `📤 Reminders sent: ${sentCount}`
+    );
+
+    console.log(
+      `❌ Reminders failed: ${failedCount}`
+    );
+
+    console.log(
+      `⏳ Reminders not due: ${notDueCount}`
+    );
+
+    console.log(
+      `⌛ Reminders expired: ${expiredCount}`
+    );
+
+    console.log(
+      `✅ Already sent: ${alreadySentCount}`
+    );
+
+    console.log(
+      "========================================"
     );
 
     return {
@@ -724,6 +902,12 @@ const processDueWhatsAppReminders =
       sentCount,
 
       failedCount,
+
+      notDueCount,
+
+      expiredCount,
+
+      alreadySentCount,
     };
   };
 
