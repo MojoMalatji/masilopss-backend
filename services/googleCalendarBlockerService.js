@@ -4,80 +4,81 @@ const {
   getAuthorizedClient,
 } = require("../config/googleAuth");
 
-const TIME_ZONE =
-  "Africa/Johannesburg";
+const TIME_ZONE = "Africa/Johannesburg";
 
 // ========================================
 // CREATE CALENDAR BLOCKER
 // ========================================
 
-const createBlockerCalendarEvent =
-  async (blocker) => {
-    if (!blocker) {
-      throw new Error(
-        "Blocker information is required."
-      );
-    }
+const createBlockerCalendarEvent = async (
+  blocker
+) => {
+  if (!blocker) {
+    throw new Error(
+      "Blocker information is required."
+    );
+  }
 
-    const auth =
-      await getAuthorizedClient();
+  const auth =
+    await getAuthorizedClient();
 
-    const calendar =
-      google.calendar({
-        version: "v3",
-        auth,
-      });
+  const calendar = google.calendar({
+    version: "v3",
+    auth,
+  });
 
-    const startDateTime =
-      `${blocker.date}T${blocker.startTime}:00`;
+  const startDateTime =
+    `${blocker.date}T${blocker.startTime}:00`;
 
-    const endDateTime =
-      `${blocker.date}T${blocker.endTime}:00`;
+  const endDateTime =
+    `${blocker.date}T${blocker.endTime}:00`;
 
-    const attendees = [];
+  const attendees = [];
 
-    // ----------------------------------------
-    // INFO
-    // ----------------------------------------
+  // ----------------------------------------
+  // INFO
+  // ----------------------------------------
 
-    if (blocker.infoEmail) {
-      attendees.push({
-        email:
-          blocker.infoEmail,
+  if (blocker.infoEmail) {
+    attendees.push({
+      email: blocker.infoEmail,
+      displayName:
+        blocker.infoName ||
+        "Mashilo Psyché & Social Solutions",
+    });
+  }
 
-        displayName:
-          blocker.infoName ||
-          "Mashilo Psyché & Social Solutions",
-      });
-    }
+  // ----------------------------------------
+  // COUNSELOR
+  // ----------------------------------------
 
-    // ----------------------------------------
-    // COUNSELOR
-    // ----------------------------------------
+  if (blocker.counselorEmail) {
+    attendees.push({
+      email: blocker.counselorEmail,
+      displayName:
+        blocker.counselorName ||
+        "Counselor",
+    });
+  }
 
-    if (blocker.counselorEmail) {
-      attendees.push({
-        email:
-          blocker.counselorEmail,
+  // ========================================
+  // CALENDAR EVENT
+  // ========================================
 
-        displayName:
-          blocker.counselorName ||
-          "Counselor",
-      });
-    }
+  const event = {
+    // --------------------------------------
+    // TITLE = BLOCKER REASON
+    // --------------------------------------
 
-    // ========================================
-    // CALENDAR EVENT
-    // ========================================
+    summary:
+      blocker.reason?.trim() ||
+      "Unavailable",
 
-    const event = {
-      summary:
-        `UNAVAILABLE - ${
-          blocker.counselorName ||
-          "Counselor"
-        }`,
+    // --------------------------------------
+    // DESCRIPTION
+    // --------------------------------------
 
-      description: `
+    description: `
 Mashilo Psyché & Social Solutions
 
 COUNSELOR AVAILABILITY BLOCK
@@ -86,7 +87,7 @@ Counselor:
 ${blocker.counselorName || "N/A"}
 
 Reason:
-${blocker.reason || "Not specified"}
+${blocker.reason?.trim() || "Not specified"}
 
 Date:
 ${blocker.date}
@@ -96,73 +97,78 @@ ${blocker.startTime} - ${blocker.endTime}
 
 Blocker ID:
 ${blocker.id || "N/A"}
-      `.trim(),
+    `.trim(),
 
-      start: {
-        dateTime:
-          startDateTime,
+    // --------------------------------------
+    // START
+    // --------------------------------------
 
-        timeZone:
-          TIME_ZONE,
-      },
+    start: {
+      dateTime: startDateTime,
+      timeZone: TIME_ZONE,
+    },
 
-      end: {
-        dateTime:
-          endDateTime,
+    // --------------------------------------
+    // END
+    // --------------------------------------
 
-        timeZone:
-          TIME_ZONE,
-      },
+    end: {
+      dateTime: endDateTime,
+      timeZone: TIME_ZONE,
+    },
 
-      attendees,
+    // --------------------------------------
+    // ATTENDEES
+    // --------------------------------------
 
-      reminders: {
-        useDefault: true,
-      },
-    };
+    attendees,
 
-    console.log(
-      `📅 Creating counselor blocker calendar event for ${blocker.counselorName}`
-    );
+    // --------------------------------------
+    // REMINDERS
+    // --------------------------------------
 
-    const response =
-      await calendar.events.insert({
-        calendarId: "primary",
-
-        resource: event,
-
-        sendUpdates: "all",
-      });
-
-    const createdEvent =
-      response.data;
-
-    console.log(
-      `✅ Calendar blocker created: ${createdEvent.id}`
-    );
-
-    return {
-      calendarEventId:
-        createdEvent.id,
-
-      calendarEventUrl:
-        createdEvent.htmlLink ||
-        null,
-    };
+    reminders: {
+      useDefault: true,
+    },
   };
+
+  console.log(
+    `📅 Creating counselor blocker calendar event: ${
+      blocker.reason?.trim() || "Unavailable"
+    }`
+  );
+
+  const response =
+    await calendar.events.insert({
+      calendarId: "primary",
+      resource: event,
+      sendUpdates: "all",
+    });
+
+  const createdEvent = response.data;
+
+  console.log(
+    `✅ Calendar blocker created: ${createdEvent.id}`
+  );
+
+  return {
+    calendarEventId:
+      createdEvent.id,
+
+    calendarEventUrl:
+      createdEvent.htmlLink || null,
+  };
+};
 
 // ========================================
 // DELETE CALENDAR BLOCKER
 // ========================================
 
 const deleteBlockerCalendarEvent =
-  async (
-    calendarEventId
-  ) => {
+  async (calendarEventId) => {
     if (!calendarEventId) {
       return {
         deleted: false,
-
         reason:
           "No Google Calendar event ID.",
       };
@@ -171,18 +177,16 @@ const deleteBlockerCalendarEvent =
     const auth =
       await getAuthorizedClient();
 
-    const calendar =
-      google.calendar({
-        version: "v3",
-        auth,
-      });
+    const calendar = google.calendar({
+      version: "v3",
+      auth,
+    });
 
     try {
       await calendar.events.delete({
         calendarId: "primary",
 
-        eventId:
-          calendarEventId,
+        eventId: calendarEventId,
 
         sendUpdates: "all",
       });
@@ -193,26 +197,21 @@ const deleteBlockerCalendarEvent =
 
       return {
         deleted: true,
-
         calendarEventId,
       };
     } catch (error) {
       // --------------------------------------
-      // Already deleted
+      // ALREADY DELETED
       // --------------------------------------
 
-      if (
-        error?.code === 404
-      ) {
+      if (error?.code === 404) {
         console.log(
           "ℹ️ Google Calendar blocker was already deleted."
         );
 
         return {
           deleted: true,
-
           alreadyDeleted: true,
-
           calendarEventId,
         };
       }
@@ -221,8 +220,11 @@ const deleteBlockerCalendarEvent =
     }
   };
 
+// ========================================
+// EXPORTS
+// ========================================
+
 module.exports = {
   createBlockerCalendarEvent,
-
   deleteBlockerCalendarEvent,
 };

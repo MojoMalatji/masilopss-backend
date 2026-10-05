@@ -9,6 +9,13 @@ const WHATSAPP_PHONE_NUMBER_ID =
 const WHATSAPP_ACCESS_TOKEN =
   process.env.WHATSAPP_ACCESS_TOKEN;
 
+  console.log(
+  "🔐 WhatsApp token loaded:",
+  WHATSAPP_ACCESS_TOKEN
+    ? `YES (${WHATSAPP_ACCESS_TOKEN.length} characters)`
+    : "NO"
+);
+
 const WHATSAPP_TEMPLATE_LANGUAGE =
   process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
 

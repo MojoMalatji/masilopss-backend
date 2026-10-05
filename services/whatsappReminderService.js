@@ -1,3 +1,4 @@
+
 // services/whatsappReminderService.js
 
 const firestoreService = require("./firestoreService");
@@ -29,6 +30,8 @@ const WHATSAPP_TEMPLATES = {
 
 /**
  * Counselor WhatsApp numbers.
+ *
+ * These must be configured in the .env file.
  */
 const COUNSELOR_WHATSAPP_NUMBERS = {
   "pride-mashilo":
@@ -44,10 +47,7 @@ const COUNSELOR_WHATSAPP_NUMBERS = {
  * ========================================
  */
 
-const createAppointmentDateTime = (
-  date,
-  time
-) => {
+const createAppointmentDateTime = (date, time) => {
   if (!date || !time) {
     throw new Error(
       "Appointment date and time are required."
@@ -73,37 +73,64 @@ const createAppointmentDateTime = (
  * ========================================
  */
 
-const getCounselorWhatsAppNumber = (
-  booking
-) => {
+const getCounselorWhatsAppNumber = (booking) => {
   if (!booking?.counselorId) {
     return "";
   }
 
-  return (
+  const rawNumber =
     COUNSELOR_WHATSAPP_NUMBERS[
       booking.counselorId
-    ] || ""
-  );
+    ] || "";
+
+  if (!rawNumber) {
+    return "";
+  }
+
+  /**
+   * Remove spaces, +, brackets, hyphens, etc.
+   */
+  let number = String(rawNumber).replace(/\D/g, "");
+
+  /**
+   * Convert South African local format:
+   * 0821234567
+   *
+   * to:
+   * 27821234567
+   */
+  if (number.startsWith("0")) {
+    number = "27" + number.slice(1);
+  }
+
+  /**
+   * Basic international WhatsApp number validation.
+   */
+  if (!/^\d{10,15}$/.test(number)) {
+    console.error(
+      `❌ Invalid WhatsApp number for counselor ${booking.counselorId}`
+    );
+
+    return "";
+  }
+
+  return number;
 };
 
 /**
  * ========================================
- * FORMAT DATE
+ * FORMAT APPOINTMENT DATE
  * ========================================
  */
 
-const formatAppointmentDate = (
-  date
-) => {
+const formatAppointmentDate = (date) => {
   if (!date) {
     return "";
   }
 
-  const appointmentDate =
-    new Date(
-      `${date}T12:00:00+02:00`
-    );
+  const appointmentDate = new Date(
+    `${date}T12:00:00+02:00`
+  );
 
   if (
     Number.isNaN(
@@ -127,14 +154,11 @@ const formatAppointmentDate = (
 
 /**
  * ========================================
- * FORMAT TIME
+ * FORMAT APPOINTMENT TIME
  * ========================================
  */
 
-const formatAppointmentTime = (
-  date,
-  time
-) => {
+const formatAppointmentTime = (date, time) => {
   try {
     const appointmentDateTime =
       createAppointmentDateTime(
@@ -162,20 +186,12 @@ const formatAppointmentTime = (
  * ========================================
  */
 
-const getTemplateName = (
-  reminderType
-) => {
-  if (
-    reminderType ===
-    "thirtyMinute"
-  ) {
+const getTemplateName = (reminderType) => {
+  if (reminderType === "thirtyMinute") {
     return WHATSAPP_TEMPLATES.thirtyMinute;
   }
 
-  if (
-    reminderType ===
-    "tenMinute"
-  ) {
+  if (reminderType === "tenMinute") {
     return WHATSAPP_TEMPLATES.tenMinute;
   }
 
@@ -189,6 +205,8 @@ const getTemplateName = (
  * BUILD TEMPLATE VARIABLES
  * ========================================
  *
+ * Template variables:
+ *
  * {{1}} Counselor name
  * {{2}} Client name
  * {{3}} Appointment date
@@ -197,9 +215,7 @@ const getTemplateName = (
  * {{6}} Location
  */
 
-const buildTemplateVariables = (
-  booking
-) => {
+const buildTemplateVariables = (booking) => {
   const counselorName =
     booking.counselorName ||
     "Counselor";
@@ -263,10 +279,7 @@ const getReminderConfiguration = (
   reminderType,
   appointmentDateTime
 ) => {
-  if (
-    reminderType ===
-    "thirtyMinute"
-  ) {
+  if (reminderType === "thirtyMinute") {
     return {
       minutesBefore: 30,
 
@@ -278,10 +291,7 @@ const getReminderConfiguration = (
     };
   }
 
-  if (
-    reminderType ===
-    "tenMinute"
-  ) {
+  if (reminderType === "tenMinute") {
     return {
       minutesBefore: 10,
 
@@ -311,8 +321,7 @@ const processReminder = async ({
   if (!booking?.id) {
     return {
       processed: false,
-      reason:
-        "Booking ID is missing.",
+      reason: "Booking ID is missing.",
     };
   }
 
@@ -320,10 +329,7 @@ const processReminder = async ({
    * Only approved appointments
    * receive reminders.
    */
-  if (
-    booking.status !==
-    "approved"
-  ) {
+  if (booking.status !== "approved") {
     return {
       processed: false,
       reason:
@@ -353,7 +359,7 @@ const processReminder = async ({
       failed: true,
       bookingId: booking.id,
       reminderType,
-      reason: error.message,
+      error: error.message,
     };
   }
 
@@ -372,16 +378,13 @@ const processReminder = async ({
   const now = new Date();
 
   /**
-   * Get current Firestore
-   * reminder state.
+   * Get current Firestore reminder state.
    */
   const reminders =
-    booking.whatsappReminders ||
-    {};
+    booking.whatsappReminders || {};
 
   const reminder =
-    reminders[reminderType] ||
-    {};
+    reminders[reminderType] || {};
 
   /**
    * Debug information.
@@ -480,8 +483,11 @@ const processReminder = async ({
   }
 
   /**
-   * Get counselor WhatsApp number.
+   * ========================================
+   * GET COUNSELOR WHATSAPP NUMBER
+   * ========================================
    */
+
   const counselorPhone =
     getCounselorWhatsAppNumber(
       booking
@@ -489,7 +495,7 @@ const processReminder = async ({
 
   if (!counselorPhone) {
     const errorMessage =
-      `No WhatsApp number configured for counselor ${booking.counselorId}.`;
+      `No valid WhatsApp number configured for counselor ${booking.counselorId}.`;
 
     console.error(
       `❌ ${errorMessage}`
@@ -517,28 +523,41 @@ const processReminder = async ({
 
     return {
       processed: false,
+      sent: false,
       failed: true,
       bookingId: booking.id,
       reminderType,
-      reason: errorMessage,
+      error: errorMessage,
     };
   }
 
   /**
-   * Get template name.
+   * ========================================
+   * GET TEMPLATE NAME
+   * ========================================
    */
+
   const templateName =
     getTemplateName(
       reminderType
     );
 
   /**
-   * Build template variables.
+   * ========================================
+   * BUILD TEMPLATE VARIABLES
+   * ========================================
    */
+
   const variables =
     buildTemplateVariables(
       booking
     );
+
+  /**
+   * ========================================
+   * LOG SEND INFORMATION
+   * ========================================
+   */
 
   console.log(
     "========================================"
@@ -553,11 +572,21 @@ const processReminder = async ({
   );
 
   console.log(
-    `Counselor: ${booking.counselorName}`
+    `Client: ${booking.name || "Unknown"}`
   );
 
   console.log(
-    `Counselor ID: ${booking.counselorId}`
+    `Counselor: ${
+      booking.counselorName ||
+      "Unknown"
+    }`
+  );
+
+  console.log(
+    `Counselor ID: ${
+      booking.counselorId ||
+      "Missing"
+    }`
   );
 
   console.log(
@@ -586,19 +615,20 @@ const processReminder = async ({
   );
 
   /**
-   * Send approved Meta template.
+   * ========================================
+   * SEND WHATSAPP TEMPLATE
+   * ========================================
    */
+
   try {
     const response =
-      await sendWhatsAppTemplateMessage(
-        {
-          to: counselorPhone,
+      await sendWhatsAppTemplateMessage({
+        to: counselorPhone,
 
-          templateName,
+        templateName,
 
-          variables,
-        }
-      );
+        variables,
+      });
 
     console.log(
       "✅ Meta WhatsApp API response received."
@@ -612,8 +642,11 @@ const processReminder = async ({
     );
 
     /**
-     * Mark reminder as sent.
+     * ========================================
+     * MARK REMINDER AS SENT
+     * ========================================
      */
+
     await firestoreService.updateWhatsAppReminder(
       booking.id,
       reminderType,
@@ -661,8 +694,7 @@ const processReminder = async ({
     );
 
     if (
-      error?.response?.data
-        ?.error
+      error?.response?.data?.error
     ) {
       console.error(
         "Meta API error:",
@@ -675,8 +707,11 @@ const processReminder = async ({
     }
 
     /**
-     * Record failed attempt.
+     * ========================================
+     * RECORD FAILED ATTEMPT
+     * ========================================
      */
+
     try {
       await firestoreService.updateWhatsAppReminder(
         booking.id,
@@ -741,19 +776,27 @@ const processDueWhatsAppReminders =
       );
 
       console.log(
-        `👤 Client: ${booking.name || "Unknown"}`
+        `👤 Client: ${
+          booking.name || "Unknown"
+        }`
       );
 
       console.log(
-        `📅 Date: ${booking.date || "Missing"}`
+        `📅 Date: ${
+          booking.date || "Missing"
+        }`
       );
 
       console.log(
-        `🕐 Time: ${booking.time || "Missing"}`
+        `🕐 Time: ${
+          booking.time || "Missing"
+        }`
       );
 
       console.log(
-        `📊 Status: ${booking.status || "Missing"}`
+        `📊 Status: ${
+          booking.status || "Missing"
+        }`
       );
 
       console.log(
@@ -771,7 +814,7 @@ const processDueWhatsAppReminders =
       );
 
       console.log(
-        `📱 WhatsApp number: ${
+        `📱 Counselor WhatsApp number: ${
           getCounselorWhatsAppNumber(
             booking
           )
@@ -781,11 +824,15 @@ const processDueWhatsAppReminders =
       );
 
       /**
-       * 30-minute reminder.
+       * ========================================
+       * 30-MINUTE REMINDER
+       * ========================================
        */
+
       const thirtyMinuteResult =
         await processReminder({
           booking,
+
           reminderType:
             "thirtyMinute",
         });
@@ -795,11 +842,15 @@ const processDueWhatsAppReminders =
       );
 
       /**
-       * 10-minute reminder.
+       * ========================================
+       * 10-MINUTE REMINDER
+       * ========================================
        */
+
       const tenMinuteResult =
         await processReminder({
           booking,
+
           reminderType:
             "tenMinute",
         });
@@ -824,6 +875,12 @@ const processDueWhatsAppReminders =
         "========================================"
       );
     }
+
+    /**
+     * ========================================
+     * RESULT COUNTS
+     * ========================================
+     */
 
     const sentCount =
       results.filter(
@@ -921,4 +978,4 @@ module.exports = {
   processDueWhatsAppReminders,
   processReminder,
   buildTemplateVariables,
-};
+}; 
