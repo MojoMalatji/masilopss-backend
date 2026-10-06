@@ -6,22 +6,55 @@ const {
   exchangeAuthorizationCode,
 } = require("../config/googleAuth");
 
-// Start Google OAuth
+// ========================================
+// START GOOGLE OAUTH
+// ========================================
+
 router.get("/google/auth", (req, res) => {
   try {
+    console.log("Starting Google Calendar authorization...");
+
     const authorizationUrl = getGoogleAuthorizationUrl();
+
+    console.log(
+      "Google authorization URL generated successfully."
+    );
 
     res.redirect(authorizationUrl);
   } catch (error) {
-    console.error("Google authorization URL error:", error);
-
-    res.status(500).send(
-      "Could not start Google Calendar authorization."
+    console.error(
+      "Google authorization URL error:",
+      error
     );
+
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Google Calendar Authorization Error</title>
+        </head>
+
+        <body style="font-family: Arial, sans-serif; padding: 40px;">
+          <h2>Could not start Google Calendar authorization</h2>
+
+          <p><strong>Error:</strong></p>
+
+          <pre style="
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+          ">${error.message || error}</pre>
+        </body>
+      </html>
+    `);
   }
 });
 
-// Google OAuth callback
+// ========================================
+// GOOGLE OAUTH CALLBACK
+// ========================================
+
 router.get("/google/callback", async (req, res) => {
   try {
     const { code } = req.query;
@@ -40,18 +73,32 @@ router.get("/google/callback", async (req, res) => {
       );
 
       return res.status(400).send(`
-        <h2>Authorization completed, but no refresh token was received.</h2>
-        <p>Please authorize the application again.</p>
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Google Calendar Authorization</title>
+          </head>
+
+          <body style="font-family: Arial, sans-serif; padding: 40px;">
+            <h2>No refresh token received</h2>
+
+            <p>
+              Google did not return a refresh token.
+            </p>
+
+            <p>
+              Please authorize the application again.
+            </p>
+          </body>
+        </html>
       `);
     }
 
-    // IMPORTANT:
-    // Do not log the actual refresh token.
     console.log(
       "Google Calendar authorization successful. Refresh token received."
     );
 
-    // TEMPORARY ONE-TIME SETUP:
+    // TEMPORARY ONE-TIME SETUP
     // Display the refresh token so it can be copied into Render.
     res.send(`
       <!DOCTYPE html>
@@ -59,15 +106,22 @@ router.get("/google/callback", async (req, res) => {
         <head>
           <title>Google Calendar Authorization</title>
         </head>
-        <body style="font-family: Arial, sans-serif; padding: 40px;">
-          <h2>Google Calendar authorization successful</h2>
+
+        <body style="
+          font-family: Arial, sans-serif;
+          padding: 40px;
+          max-width: 900px;
+          margin: auto;
+        ">
+
+          <h2>Google Calendar Authorization Successful</h2>
 
           <p>
             A refresh token was successfully generated.
           </p>
 
           <p>
-            Add the following to your Render environment variables:
+            Add this to your Render environment variables:
           </p>
 
           <p>
@@ -78,10 +132,11 @@ router.get("/google/callback", async (req, res) => {
             readonly
             style="
               width: 100%;
-              max-width: 800px;
               height: 120px;
               padding: 10px;
+              box-sizing: border-box;
               font-family: monospace;
+              font-size: 14px;
             "
           >${tokens.refresh_token}</textarea>
 
@@ -91,20 +146,40 @@ router.get("/google/callback", async (req, res) => {
           </p>
 
           <p>
-            After adding it to Render, redeploy the backend.
+            After adding the token to Render, redeploy the backend.
           </p>
+
         </body>
       </html>
     `);
+
   } catch (error) {
     console.error(
       "Google OAuth callback error:",
       error
     );
 
-    res.status(500).send(
-      "Google Calendar authorization failed."
-    );
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Google Calendar Authorization Error</title>
+        </head>
+
+        <body style="font-family: Arial, sans-serif; padding: 40px;">
+          <h2>Google Calendar authorization failed</h2>
+
+          <p><strong>Error:</strong></p>
+
+          <pre style="
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+          ">${error.message || error}</pre>
+        </body>
+      </html>
+    `);
   }
 });
 

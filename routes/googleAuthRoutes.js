@@ -16,14 +16,12 @@ router.get("/google/auth", (req, res) => {
 
     res.redirect(authorizationUrl);
   } catch (error) {
-    console.error(
-      "Google authorization URL error:",
-      error
-    );
+    console.error("Google authorization URL error:", error);
 
-    res.status(500).send(
-      "Could not start Google Calendar authorization."
-    );
+    res.status(500).send(`
+  <h2>Could not start Google Calendar authorization</h2>
+  <pre>${error.message || error}</pre>
+`);
   }
 });
 
@@ -36,16 +34,14 @@ router.get("/google/callback", async (req, res) => {
     const { code } = req.query;
 
     if (!code) {
-      return res.status(400).send(
-        "Google authorization code is missing."
-      );
+      return res.status(400).send("Google authorization code is missing.");
     }
 
     const tokens = await exchangeAuthorizationCode(code);
 
     if (!tokens.refresh_token) {
       console.error(
-        "Google authorization succeeded, but no refresh token was returned."
+        "Google authorization succeeded, but no refresh token was returned.",
       );
 
       return res.status(400).send(`
@@ -59,7 +55,7 @@ router.get("/google/callback", async (req, res) => {
 
     // Never log the actual refresh token.
     console.log(
-      "Google Calendar authorization successful. Refresh token received."
+      "Google Calendar authorization successful. Refresh token received.",
     );
 
     // TEMPORARY:
@@ -117,14 +113,9 @@ router.get("/google/callback", async (req, res) => {
       </html>
     `);
   } catch (error) {
-    console.error(
-      "Google OAuth callback error:",
-      error
-    );
+    console.error("Google OAuth callback error:", error);
 
-    res.status(500).send(
-      "Google Calendar authorization failed."
-    );
+    res.status(500).send("Google Calendar authorization failed.");
   }
 });
 
