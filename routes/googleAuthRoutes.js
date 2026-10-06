@@ -29,7 +29,9 @@ router.get("/google/auth", (req, res) => {
 // GOOGLE OAUTH CALLBACK
 // ========================================
 
-router.get("/google/callback", async (req, res) => {
+router.get(
+  ["/google/callback", "/oauth2callback"],
+  async (req, res) => {
   try {
     const { code } = req.query;
 
